@@ -1,0 +1,23 @@
+{
+  "name": "splitease",
+  "private": true,
+  "workspaces": ["client", "server"],
+  "scripts": {
+    "dev": "concurrently -n client,server -c blue,green \"npm run dev -w client\" \"npm run dev -w server\"",
+    "db:migrate": "tsx db/migrate.ts",
+    "lint": "eslint server/src --max-warnings 0",
+    "format": "prettier --write \"**/*.{ts,tsx,js,cjs,json,css,md}\""
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.46.0",
+    "@typescript-eslint/parser": "^8.46.0",
+    "@types/pg": "^8.11.14",
+    "concurrently": "^9.2.1",
+    "dotenv": "^16.5.0",
+    "eslint": "^8.57.1",
+    "pg": "^8.15.6",
+    "prettier": "^3.6.2",
+    "tsx": "^4.19.3",
+    "typescript": "~5.8.3"
+  }
+}

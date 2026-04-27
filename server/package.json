@@ -2,17 +2,42 @@
   "name": "splitease-server",
   "private": true,
   "version": "0.0.1",
-  "type": "module",
   "scripts": {
     "build": "tsc",
-    "dev": "tsx watch src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "dev": "nodemon --watch src --ext ts --exec ts-node src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "jest --runInBand"
   },
   "engines": {
     "node": ">=20"
   },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^4.21.2",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.15.6",
+    "socket.io": "^4.8.1",
+    "zod": "^3.25.76"
+  },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.8",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.14",
+    "@types/jsonwebtoken": "^9.0.9",
     "@types/node": "^22.14.0",
+    "@types/pg": "^8.11.14",
+    "@types/supertest": "^6.0.3",
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.9",
+    "supertest": "^7.1.0",
+    "ts-jest": "^29.3.2",
+    "ts-node": "^10.9.2",
     "tsx": "^4.19.3",
     "typescript": "~5.8.3"
   }

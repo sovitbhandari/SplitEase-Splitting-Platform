@@ -1,3 +1,9 @@
-/**
- * SplitEase API entry — Sprint 1 will add Express and routes here.
- */
+import { createApp } from './app';
+import { loadEnv } from './config/env';
+
+const app = createApp();
+const { PORT } = loadEnv();
+
+app.listen(PORT, () => {
+  console.log(`SplitEase API listening on http://localhost:${PORT}`);
+});
