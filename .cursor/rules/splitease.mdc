@@ -1,0 +1,19 @@
+---
+description: SplitEase project constraints — raw SQL, types, secrets, tests
+globs:
+---
+
+You are helping build SplitEase, a full-stack group expense splitting platform.
+
+Stack: React 18, Node.js 20, Express, TypeScript 5, PostgreSQL 15, Socket.IO 4, Plaid API, Recharts, AWS EC2.
+
+Hard constraints:
+
+- Use raw SQL only. Do not use Prisma, TypeORM, Sequelize, or any ORM.
+- Do not use the 'any' TypeScript type.
+- All functions must have clear parameter and return types.
+- Never hardcode secrets, tokens, passwords, or API keys.
+- Use environment variables from .env files.
+- Add or update tests for every new route, utility, or important component.
+- Keep code simple, readable, and production-oriented.
+- Before finishing a task, verify acceptance criteria and mention commands to run.
