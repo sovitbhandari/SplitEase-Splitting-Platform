@@ -1,5 +1,6 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { loginFormSchema, type LoginFormValues } from '../schemas/authForms';
 import { api } from '../api/axios';
@@ -9,6 +10,8 @@ type LoginResponse = { user: AuthUser; accessToken: string };
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const bootstrapping = useAuthStore((s) => s.bootstrapping);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const setAuth = useAuthStore((s) => s.setAuth);
   const {
     register,
@@ -45,6 +48,12 @@ export function LoginPage() {
       setError('root', { message });
     }
   };
+
+  useEffect(() => {
+    if (!bootstrapping && accessToken) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [accessToken, bootstrapping, navigate]);
 
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4">

@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "scripts": {
     "build": "tsc",
-    "dev": "nodemon --watch src --ext ts --exec ts-node src/index.ts",
+    "dev": "nodemon --watch src --ext ts --exec \"ts-node --files src/index.ts\"",
     "typecheck": "tsc --noEmit",
     "test": "jest --runInBand"
   },
@@ -19,6 +19,7 @@
     "express": "^4.21.2",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
+    "plaid": "^37.0.0",
     "pg": "^8.15.6",
     "socket.io": "^4.8.1",
     "zod": "^3.25.76"

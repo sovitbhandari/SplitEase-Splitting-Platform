@@ -6,9 +6,19 @@ import { closePool, query } from '../utils/db';
 const app = createApp();
 
 async function truncateAuthTables(): Promise<void> {
+  await query(`SELECT set_config('app.allow_ledger_mutation', 'on', false)`);
+  await query('DELETE FROM settlements');
+  await query('DELETE FROM expense_splits');
+  await query('DELETE FROM expenses');
+  await query('DELETE FROM ledger_entries');
+  await query('DELETE FROM accounts');
+  await query('DELETE FROM plaid_items');
+  await query('DELETE FROM group_members');
+  await query('DELETE FROM groups');
   await query('DELETE FROM refresh_tokens');
   await query('DELETE FROM email_verifications');
   await query('DELETE FROM users');
+  await query(`SELECT set_config('app.allow_ledger_mutation', 'off', false)`);
 }
 
 describe('Auth API', () => {

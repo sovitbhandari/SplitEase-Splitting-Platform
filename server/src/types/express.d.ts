@@ -12,3 +12,14 @@ declare global {
 }
 
 export {};
+
+declare module 'socket.io' {
+  interface SocketData {
+    user?: {
+      id: string;
+      email: string;
+      display_name: string;
+      avatar_url: string | null;
+    };
+  }
+}
