@@ -7,6 +7,7 @@ import {
   type RegisterFormValues,
 } from '../schemas/authForms';
 import { api } from '../api/axios';
+import { abortBootstrapAuth } from '../auth/bootstrap';
 import { useAuthStore, type AuthUser } from '../store/authStore';
 
 type RegisterResponse = { user: AuthUser; accessToken: string };
@@ -32,6 +33,7 @@ export function RegisterPage() {
   });
 
   const onSubmit = async (values: RegisterFormValues): Promise<void> => {
+    abortBootstrapAuth();
     try {
       const { data } = await api.post<RegisterResponse>('/api/auth/register', {
         display_name: values.display_name,

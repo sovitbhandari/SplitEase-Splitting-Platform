@@ -13,3 +13,10 @@ export const joinGroupBodySchema = z.object({
 });
 
 export type JoinGroupInput = z.infer<typeof joinGroupBodySchema>;
+
+export const updateGroupBodySchema = z.object({
+  name: z.string().min(1, 'Trip name is required').max(120),
+  description: z.string().max(2000).optional(),
+});
+
+export type UpdateGroupInput = z.infer<typeof updateGroupBodySchema>;

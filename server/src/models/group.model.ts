@@ -141,3 +141,25 @@ export async function isGroupAdmin(groupId: string, userId: string): Promise<boo
 export async function deleteGroup(groupId: string): Promise<void> {
   await query(`DELETE FROM groups WHERE id = $1`, [groupId]);
 }
+
+export async function updateGroup(
+  groupId: string,
+  input: { name: string; description: string | null }
+): Promise<GroupSummary | null> {
+  const { rows } = await query<GroupSummary>(
+    `UPDATE groups AS g
+     SET name = $1, description = $2
+     WHERE g.id = $3
+     RETURNING
+       g.id,
+       g.name,
+       g.description,
+       g.currency,
+       g.invite_code,
+       g.created_by,
+       g.created_at,
+       (SELECT COUNT(*)::int FROM group_members gm WHERE gm.group_id = g.id) AS member_count`,
+    [input.name, input.description, groupId]
+  );
+  return rows[0] ?? null;
+}

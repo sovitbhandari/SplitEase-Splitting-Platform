@@ -1,17 +1,38 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import type { GroupTransferRow } from '../api/paymentTransfers';
 import type { DebtEntry } from '../api/settlements';
-import { formatCurrency, getDebtLabel } from '../utils/financeFormat';
+import { buildSettlementKey } from '../utils/settlementKey';
+import { latestTransferForSettlementKey, sandboxTransferBadgeLabel } from '../utils/transferDisplay';
+import { pluralUnit } from '../utils/pluralize';
+import { formatCurrency } from '../utils/financeFormat';
 
 type Props = {
   currentUserId: string;
   debts: DebtEntry[];
-  onCashSettle: (debt: DebtEntry, amount: number) => Promise<void>;
-  onPay: (debt: DebtEntry) => Promise<void>;
+  groupTransfers: GroupTransferRow[];
+  interactionLocked?: boolean;
+  onRecordPayment: (debt: DebtEntry) => void;
+  onSendReminder: (debt: DebtEntry) => void;
+  onViewBreakdown: (debt: DebtEntry) => void;
 };
 
-export function SettlementPanel({ currentUserId, debts, onCashSettle, onPay }: Props) {
-  const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [amountInputs, setAmountInputs] = useState<Record<string, string>>({});
+const btnPrimary =
+  'rounded-xl bg-indigo-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-60';
+const btnSecondary =
+  'rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-60';
+
+const INITIAL_VISIBLE = 3;
+
+export function SettlementPanel({
+  currentUserId,
+  debts,
+  groupTransfers,
+  interactionLocked,
+  onRecordPayment,
+  onSendReminder,
+  onViewBreakdown,
+}: Props) {
+  const [showAll, setShowAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const myDebts = debts.filter((item) => item.fromUserId === currentUserId);
@@ -21,131 +42,139 @@ export function SettlementPanel({ currentUserId, debts, onCashSettle, onPay }: P
   );
   const orderedDebts = [...myDebts, ...owedToMe, ...otherDebts];
 
-  const settleCash = async (debt: DebtEntry): Promise<void> => {
-    const amountKey = `${debt.fromUserId}-${debt.toUserId}`;
-    const input = Number(amountInputs[amountKey] ?? debt.amount);
-    if (!Number.isFinite(input) || input <= 0) {
-      setError('Enter a valid cash amount');
-      return;
+  const visibleDebts = useMemo(() => {
+    if (showAll || orderedDebts.length <= INITIAL_VISIBLE) {
+      return orderedDebts;
     }
-    if (input > debt.amount) {
-      setError('Amount cannot exceed current debt');
-      return;
-    }
-    const key = `${debt.fromUserId}-${debt.toUserId}-cash`;
-    setError(null);
-    setBusyKey(key);
-    try {
-      await onCashSettle(debt, input);
-      setAmountInputs((prev) => ({ ...prev, [amountKey]: '' }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to settle debt');
-    } finally {
-      setBusyKey(null);
-    }
-  };
+    return orderedDebts.slice(0, INITIAL_VISIBLE);
+  }, [orderedDebts, showAll]);
 
-  const startPay = async (debt: DebtEntry): Promise<void> => {
-    const key = `${debt.fromUserId}-${debt.toUserId}-pay`;
-    setError(null);
-    setBusyKey(key);
-    try {
-      await onPay(debt);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start payment');
-    } finally {
-      setBusyKey(null);
-    }
-  };
+  const summaryLine =
+    debts.length === 0
+      ? 'Everyone is settled up.'
+      : `${debts.length} ${pluralUnit(debts.length, 'payment', 'payments')} can settle this group.`;
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-slate-900">Settlement Plan</h3>
-        <span className="text-xs text-slate-500">
-          {debts.length} open {debts.length === 1 ? 'debt' : 'debts'}
+    <section
+      id="settlement-plan"
+      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-lg font-semibold text-slate-900">Settlement plan</h3>
+        <span className="text-xs font-medium text-slate-500">
+          {debts.length === 0
+            ? 'No open debts'
+            : pluralUnit(debts.length, 'open debt', 'open debts')}
         </span>
       </div>
-      <p className="mt-1 text-xs text-slate-500">
-        Follow this list to settle balances quickly and clearly.
+      <p
+        className={`mt-2 text-sm font-medium ${
+          debts.length === 0 ? 'text-emerald-800' : 'text-slate-700'
+        }`}
+      >
+        {summaryLine}
       </p>
-      {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
+      <p className="mt-1 text-sm text-slate-600">
+        Pay down these balances to keep the trip fair and easy to follow.
+      </p>
+      {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-4 space-y-4">
         {orderedDebts.length === 0 ? (
-          <p className="rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            Everyone is settled up 🎉
+          <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-4 text-sm text-emerald-800">
+            Everyone is settled up.
           </p>
         ) : (
-          orderedDebts.map((debt) => {
-            const cashKey = `${debt.fromUserId}-${debt.toUserId}-cash`;
-            const payKey = `${debt.fromUserId}-${debt.toUserId}-pay`;
-            const inputKey = `${debt.fromUserId}-${debt.toUserId}`;
-            const relevant = debt.fromUserId === currentUserId;
+          visibleDebts.map((debt) => {
             const toneClass =
               debt.fromUserId === currentUserId
-                ? 'border-rose-100 bg-rose-50'
+                ? 'border-rose-100 bg-rose-50/70'
                 : debt.toUserId === currentUserId
-                  ? 'border-emerald-100 bg-emerald-50'
+                  ? 'border-emerald-100 bg-emerald-50/70'
                   : 'border-slate-200 bg-slate-50';
+
+            const settlementKey = buildSettlementKey(debt.fromUserId, debt.toUserId);
+            const latestTr = latestTransferForSettlementKey(groupTransfers, settlementKey);
+            const badge = sandboxTransferBadgeLabel(latestTr);
 
             return (
               <div
                 key={`${debt.fromUserId}-${debt.toUserId}`}
-                className={`rounded-lg border p-3 ${toneClass}`}
+                className={`rounded-2xl border p-4 shadow-sm ${toneClass}`}
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-slate-900">
-                    {getDebtLabel(debt, currentUserId)}
-                  </p>
-                  <p className="text-base font-bold text-slate-900">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-1">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Debtor → Receiver
+                    </p>
+                    <p className="text-sm font-semibold text-slate-900">
+                      <span className="font-semibold">{debt.fromUserName}</span>
+                      <span className="px-1 text-slate-400">→</span>
+                      <span className="font-semibold">{debt.toUserName}</span>
+                    </p>
+                    {badge ? (
+                      <span className="inline-block rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-900">
+                        {badge}
+                      </span>
+                    ) : null}
+                    <p className="text-xs text-slate-600">
+                      Suggested payment to clear this balance.
+                    </p>
+                  </div>
+                  <p className="text-2xl font-bold tabular-nums text-slate-900">
                     {formatCurrency(debt.amount)}
                   </p>
                 </div>
-                {relevant ? (
-                  <div className="mt-3 space-y-2">
-                    <label className="block text-xs font-medium text-slate-600">
-                      Amount to record
-                    </label>
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      placeholder={debt.amount.toFixed(2)}
-                      value={amountInputs[inputKey] ?? ''}
-                      onChange={(event) =>
-                        setAmountInputs((prev) => ({
-                          ...prev,
-                          [inputKey]: event.target.value,
-                        }))
-                      }
-                      className="w-40 rounded border border-slate-300 px-2 py-1.5 text-sm"
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        className="rounded bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"
-                        disabled={busyKey !== null}
-                        onClick={() => void settleCash(debt)}
-                      >
-                        {busyKey === cashKey ? 'Recording...' : 'Record Cash Payment'}
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500"
-                        disabled={busyKey !== null}
-                        onClick={() => void startPay(debt)}
-                      >
-                        {busyKey === payKey ? 'Opening...' : 'Pay'}
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={btnPrimary}
+                    disabled={interactionLocked}
+                    onClick={() => {
+                      setError(null);
+                      onRecordPayment(debt);
+                    }}
+                    aria-label={`Record payment from ${debt.fromUserName} to ${debt.toUserName}`}
+                  >
+                    Record payment
+                  </button>
+                  <button
+                    type="button"
+                    className={btnSecondary}
+                    disabled={interactionLocked}
+                    onClick={() => onSendReminder(debt)}
+                    aria-label={`Send reminder to ${debt.fromUserName}`}
+                  >
+                    Send reminder
+                  </button>
+                  <button
+                    type="button"
+                    className={btnSecondary}
+                    disabled={interactionLocked}
+                    onClick={() => onViewBreakdown(debt)}
+                    aria-label="View settlement breakdown"
+                  >
+                    View breakdown
+                  </button>
+                </div>
               </div>
             );
           })
         )}
       </div>
+
+      {orderedDebts.length > INITIAL_VISIBLE ? (
+        <div className="mt-4 flex justify-center">
+          <button
+            type="button"
+            className="text-sm font-semibold text-indigo-700 hover:text-indigo-600"
+            onClick={() => setShowAll((prev) => !prev)}
+          >
+            {showAll ? 'Show fewer' : 'Show all settlements'}
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

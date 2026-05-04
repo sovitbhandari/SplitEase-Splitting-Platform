@@ -8,8 +8,13 @@ import {
   getGroupsForUser,
   getMembersByGroupId,
   isGroupAdmin,
+  updateGroup,
 } from '../models/group.model';
-import { createGroupBodySchema, joinGroupBodySchema } from '../schemas/group.schema';
+import {
+  createGroupBodySchema,
+  joinGroupBodySchema,
+  updateGroupBodySchema,
+} from '../schemas/group.schema';
 import { emitGroupMembersUpdated } from '../sockets/balanceEmitter';
 
 function requireUserId(req: Request, res: Response): string | null {
@@ -48,6 +53,46 @@ export async function getMyGroupsHandler(req: Request, res: Response): Promise<v
   }
   const groups = await getGroupsForUser(userId);
   res.status(200).json({ groups });
+}
+
+export async function updateGroupHandler(req: Request, res: Response): Promise<void> {
+  const userId = requireUserId(req, res);
+  if (!userId) {
+    return;
+  }
+  const groupId = req.params.id;
+  if (!groupId) {
+    res.status(400).json({ error: 'Group id is required' });
+    return;
+  }
+  const parsed = updateGroupBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Validation failed', details: parsed.error.flatten() });
+    return;
+  }
+  const membership = await getGroupByIdForUser(groupId, userId);
+  if (!membership) {
+    res.status(404).json({ error: 'Group not found' });
+    return;
+  }
+  const admin = await isGroupAdmin(groupId, userId);
+  if (!admin) {
+    res.status(403).json({ error: 'Only admins can update trip settings' });
+    return;
+  }
+  const nextDescription =
+    parsed.data.description !== undefined
+      ? parsed.data.description.trim() || null
+      : membership.description;
+  const updated = await updateGroup(groupId, {
+    name: parsed.data.name.trim(),
+    description: nextDescription,
+  });
+  if (!updated) {
+    res.status(500).json({ error: 'Failed to update group' });
+    return;
+  }
+  res.status(200).json({ group: updated });
 }
 
 export async function getGroupByIdHandler(req: Request, res: Response): Promise<void> {

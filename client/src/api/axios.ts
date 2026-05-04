@@ -1,4 +1,5 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import type { AuthUser } from '../store/authStore';
 import { useAuthStore } from '../store/authStore';
 
 const refreshClient = axios.create({
@@ -44,7 +45,13 @@ api.interceptors.response.use(
       const { data } = await refreshClient.post<{ accessToken: string }>(
         '/api/auth/refresh'
       );
-      useAuthStore.getState().setAccessToken(data.accessToken);
+      const { data: me } = await refreshClient.get<{ user: AuthUser }>(
+        '/api/users/me',
+        {
+          headers: { Authorization: `Bearer ${data.accessToken}` },
+        }
+      );
+      useAuthStore.getState().setAuth(me.user, data.accessToken);
       original.headers.Authorization = `Bearer ${data.accessToken}`;
       return api(original);
     } catch {

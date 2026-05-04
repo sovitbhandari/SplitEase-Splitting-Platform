@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/axios';
+import { abortBootstrapAuth } from '../auth/bootstrap';
 import { createGroup, getGroups, joinGroup, type Group } from '../api/groups';
 import { GroupCard } from '../components/GroupCard';
 import { useAuthStore } from '../store/authStore';
@@ -22,6 +23,7 @@ export function DashboardPage() {
   const [inviteCode, setInviteCode] = useState('');
 
   const handleLogout = async (): Promise<void> => {
+    abortBootstrapAuth();
     try {
       await api.post('/api/auth/logout');
     } catch {

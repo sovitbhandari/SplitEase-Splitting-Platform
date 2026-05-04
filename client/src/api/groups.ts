@@ -50,3 +50,11 @@ export async function getGroupById(groupId: string): Promise<{
   );
   return data;
 }
+
+export async function updateGroup(
+  groupId: string,
+  payload: { name: string; description?: string }
+): Promise<Group> {
+  const { data } = await api.patch<{ group: Group }>(`/api/groups/${groupId}`, payload);
+  return data.group;
+}

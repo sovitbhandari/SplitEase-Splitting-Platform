@@ -1,9 +1,10 @@
 import type { Request, Response } from 'express';
-import { CountryCode, Products } from 'plaid';
+import { Products } from 'plaid';
 import { z } from 'zod';
 import { loadEnv } from '../config/env';
 import { encrypt } from '../utils/encryption';
-import { defaultCountryCodes, defaultPlaidProducts, getPlaidClient } from '../utils/plaidClient';
+import { parseCountryCodes, parsePlaidProducts } from '../utils/plaidProducts';
+import { getPlaidClient } from '../utils/plaidClient';
 import { getAccountsByUser, saveAccounts, savePlaidItem } from '../models/plaid.model';
 
 const exchangeSchema = z.object({
@@ -23,17 +24,48 @@ export async function getLinkToken(req: Request, res: Response): Promise<void> {
   if (!user) {
     return;
   }
-  const plaid = getPlaidClient();
   const env = loadEnv();
-  const response = await plaid.linkTokenCreate({
-    user: { client_user_id: user.id },
-    client_name: 'SplitEase',
-    products: defaultPlaidProducts.length ? defaultPlaidProducts : [Products.Auth],
-    country_codes: defaultCountryCodes.length ? defaultCountryCodes : [CountryCode.Us],
-    language: 'en',
-    webhook: env.PLAID_WEBHOOK_URL || undefined,
-  });
-  res.status(200).json({ link_token: response.data.link_token });
+  if (!env.PLAID_CLIENT_ID?.trim() || !env.PLAID_SECRET?.trim()) {
+    res.status(503).json({
+      error:
+        'Plaid is not configured. Add PLAID_CLIENT_ID and PLAID_SECRET (Sandbox keys) to server/.env and restart the server.',
+    });
+    return;
+  }
+  const plaid = getPlaidClient();
+  const products = parsePlaidProducts(env.PLAID_PRODUCTS);
+  const countryCodes = parseCountryCodes(env.PLAID_COUNTRY_CODES);
+  try {
+    const response = await plaid.linkTokenCreate({
+      user: { client_user_id: user.id },
+      client_name: 'SplitEase',
+      products: products.length ? products : [Products.Auth],
+      country_codes: countryCodes,
+      language: 'en',
+      webhook: env.PLAID_WEBHOOK_URL || undefined,
+      redirect_uri: env.PLAID_REDIRECT_URI?.trim() ? env.PLAID_REDIRECT_URI.trim() : undefined,
+    });
+    res.status(200).json({ link_token: response.data.link_token });
+  } catch (err: unknown) {
+    const message =
+      err && typeof err === 'object' && 'response' in err
+        ? (() => {
+            const data = (err as { response?: { data?: { error_message?: string; error_code?: string } } })
+              .response?.data;
+            if (data?.error_message && typeof data.error_message === 'string') {
+              return data.error_code
+                ? `${data.error_message} (${data.error_code})`
+                : data.error_message;
+            }
+            return null;
+          })()
+        : null;
+    res.status(502).json({
+      error:
+        message ??
+        (err instanceof Error ? err.message : 'Plaid could not create a link session. Check PLAID_ENV, products, and your Plaid Dashboard settings.'),
+    });
+  }
 }
 
 export async function exchangeToken(req: Request, res: Response): Promise<void> {

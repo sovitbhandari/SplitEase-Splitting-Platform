@@ -23,6 +23,8 @@ export async function settleDebt(
     toUserId: string;
     amount: number;
     method: 'cash' | 'pay';
+    note?: string;
+    paymentDate?: string;
   }
 ): Promise<{ balances: BalanceEntry[]; debts: DebtEntry[] }> {
   const { data } = await api.post<{ balances: BalanceEntry[]; debts: DebtEntry[] }>(

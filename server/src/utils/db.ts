@@ -46,6 +46,18 @@ export async function closePool(): Promise<void> {
   }
 }
 
+/** Single pooled connection for scripts/tests that need session-scoped settings (e.g. ledger bypass). */
+export async function runWithDedicatedClient<T>(
+  fn: (client: PoolClient) => Promise<T>
+): Promise<T> {
+  const client = await getPool().connect();
+  try {
+    return await fn(client);
+  } finally {
+    client.release();
+  }
+}
+
 export async function withTransaction<T>(
   fn: (client: PoolClient) => Promise<T>
 ): Promise<T> {

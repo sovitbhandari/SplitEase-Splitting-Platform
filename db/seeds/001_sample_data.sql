@@ -17,7 +17,7 @@ ON CONFLICT (email) DO NOTHING;
 INSERT INTO groups (id, name, description, currency, invite_code, created_by)
 VALUES (
   '33333333-3333-3333-3333-333333333333',
-  'Sample Roommates',
+  'Miami Weekend Trip',
   'Seeded group for local testing',
   'USD',
   '44444444-4444-4444-4444-444444444444',

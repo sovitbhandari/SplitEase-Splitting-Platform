@@ -6,7 +6,10 @@ export async function settleDebtBetweenUsers(input: {
   fromUserId: string;
   toUserId: string;
   amount: number;
-  method: 'cash' | 'pay';
+  method: 'cash' | 'pay' | 'plaid_transfer';
+  note?: string;
+  paymentDate?: string;
+  paymentTransferId?: string;
 }): Promise<{ settledAmount: number }> {
   return withTransaction(async (client: PoolClient) => {
     const splits = await client.query<{
@@ -72,6 +75,9 @@ export async function settleDebtBetweenUsers(input: {
           toUserId: input.toUserId,
           amount: input.amount,
           method: input.method,
+          note: input.note ?? undefined,
+          paymentDate: input.paymentDate ?? undefined,
+          paymentTransferId: input.paymentTransferId ?? undefined,
         }),
       ]
     );

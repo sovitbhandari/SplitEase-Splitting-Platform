@@ -2,11 +2,33 @@ import { useEffect, useState } from 'react';
 import { usePlaidLink } from 'react-plaid-link';
 import { exchangeToken, getLinkToken, type ConnectedAccount } from '../api/plaid';
 
+function linkInitErrorMessage(err: unknown, fallback: string): string {
+  if (
+    err &&
+    typeof err === 'object' &&
+    'response' in err &&
+    err.response &&
+    typeof err.response === 'object' &&
+    'data' in err.response &&
+    err.response.data &&
+    typeof err.response.data === 'object' &&
+    'error' in err.response.data &&
+    typeof (err.response.data as { error: unknown }).error === 'string'
+  ) {
+    return (err.response.data as { error: string }).error;
+  }
+  if (err instanceof Error && err.message.trim()) {
+    return err.message;
+  }
+  return fallback;
+}
+
 type Props = {
   onConnected: (accounts: ConnectedAccount[]) => void;
+  'aria-label'?: string;
 };
 
-export function PlaidLinkButton({ onConnected }: Props) {
+export function PlaidLinkButton({ onConnected, 'aria-label': ariaLabel }: Props) {
   const [token, setToken] = useState<string | null>(null);
   const [pendingOpen, setPendingOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,8 +59,13 @@ export function PlaidLinkButton({ onConnected }: Props) {
       const linkToken = await getLinkToken();
       setToken(linkToken);
       setPendingOpen(true);
-    } catch {
-      setError('Failed to initialize Plaid Link');
+    } catch (err: unknown) {
+      setError(
+        linkInitErrorMessage(
+          err,
+          'Failed to initialize Plaid Link. Check the browser network tab and server logs.'
+        )
+      );
     }
   };
 
@@ -48,6 +75,7 @@ export function PlaidLinkButton({ onConnected }: Props) {
         type="button"
         onClick={() => void handleClick()}
         className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+        aria-label={ariaLabel ?? 'Connect bank account'}
       >
         Connect Bank Account
       </button>

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { GroupMember } from '../api/groups';
+import { inferCategoryEnumFromDescription } from '../utils/expenseDisplay';
 import { SplitModeSelector } from './SplitModeSelector';
 
 type Mode = 'equal' | 'percentage' | 'exact';
@@ -24,6 +25,7 @@ export function AddExpenseModal({ members, paidBy, loading, onClose, onSubmit }:
   const [amount, setAmount] = useState('0');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('other');
+  const [categoryManual, setCategoryManual] = useState(false);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [splitMode, setSplitMode] = useState<Mode>('equal');
   const [values, setValues] = useState<Record<string, string>>(
@@ -98,7 +100,7 @@ export function AddExpenseModal({ members, paidBy, loading, onClose, onSubmit }:
   };
 
   return (
-    <div className="fixed inset-0 z-20 bg-black/40 p-4">
+    <div className="fixed inset-0 z-[65] bg-black/40 p-4">
       <div className="mx-auto mt-10 max-w-2xl rounded-xl bg-white p-6 shadow-xl">
         <h3 className="text-lg font-semibold text-slate-900">Add Expense</h3>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -113,7 +115,13 @@ export function AddExpenseModal({ members, paidBy, loading, onClose, onSubmit }:
             className="rounded border border-slate-300 px-3 py-2 text-sm"
             placeholder="Description"
             value={description}
-            onChange={(event) => setDescription(event.target.value)}
+            onChange={(event) => {
+              const next = event.target.value;
+              setDescription(next);
+              if (!categoryManual) {
+                setCategory(inferCategoryEnumFromDescription(next));
+              }
+            }}
           />
           <input
             className="rounded border border-slate-300 px-3 py-2 text-sm"
@@ -124,7 +132,11 @@ export function AddExpenseModal({ members, paidBy, loading, onClose, onSubmit }:
           <select
             className="rounded border border-slate-300 px-3 py-2 text-sm"
             value={category}
-            onChange={(event) => setCategory(event.target.value)}
+            onChange={(event) => {
+              setCategoryManual(true);
+              setCategory(event.target.value);
+            }}
+            aria-label="Expense category"
           >
             <option value="food">food</option>
             <option value="transport">transport</option>

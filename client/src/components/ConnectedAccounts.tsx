@@ -6,11 +6,7 @@ type Props = {
 
 export function ConnectedAccounts({ accounts }: Props) {
   if (accounts.length === 0) {
-    return (
-      <p className="rounded-lg border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500">
-        No connected accounts yet.
-      </p>
-    );
+    return null;
   }
 
   return (

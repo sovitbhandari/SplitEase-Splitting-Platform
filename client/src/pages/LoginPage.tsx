@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { loginFormSchema, type LoginFormValues } from '../schemas/authForms';
 import { api } from '../api/axios';
+import { abortBootstrapAuth } from '../auth/bootstrap';
 import { useAuthStore, type AuthUser } from '../store/authStore';
 
 type LoginResponse = { user: AuthUser; accessToken: string };
@@ -24,6 +25,7 @@ export function LoginPage() {
   });
 
   const onSubmit = async (values: LoginFormValues): Promise<void> => {
+    abortBootstrapAuth();
     try {
       const { data } = await api.post<LoginResponse>('/api/auth/login', {
         email: values.email,

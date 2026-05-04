@@ -11,6 +11,8 @@ const settleSchema = z.object({
   toUserId: z.string().uuid(),
   amount: z.number().positive(),
   method: z.enum(['cash', 'pay']),
+  note: z.string().max(500).optional(),
+  paymentDate: z.string().max(32).optional(),
 });
 
 function requireUser(req: Request, res: Response): string | null {
@@ -70,6 +72,8 @@ export async function settleDebtHandler(req: Request, res: Response): Promise<vo
     toUserId: parsed.data.toUserId,
     amount: parsed.data.amount,
     method: parsed.data.method,
+    note: parsed.data.note,
+    paymentDate: parsed.data.paymentDate,
   });
 
   const balances = await computeGroupBalances(groupId);

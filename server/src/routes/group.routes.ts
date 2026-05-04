@@ -18,6 +18,10 @@ router.get('/:id', (req, res, next) => {
   void groupController.getGroupByIdHandler(req, res).catch(next);
 });
 
+router.patch('/:id', (req, res, next) => {
+  void groupController.updateGroupHandler(req, res).catch(next);
+});
+
 router.post('/join', (req, res, next) => {
   void groupController.joinGroupHandler(req, res).catch(next);
 });
