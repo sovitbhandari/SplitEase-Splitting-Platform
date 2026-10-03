@@ -58,6 +58,35 @@ function extractApiError(err: unknown, fallback: string): string {
   return fallback;
 }
 
+function extractApiErrorCode(err: unknown): string | null {
+  if (
+    err &&
+    typeof err === 'object' &&
+    'response' in err &&
+    err.response &&
+    typeof err.response === 'object' &&
+    'data' in err.response &&
+    err.response.data &&
+    typeof err.response.data === 'object' &&
+    'code' in err.response.data &&
+    typeof (err.response.data as { code: unknown }).code === 'string'
+  ) {
+    return (err.response.data as { code: string }).code;
+  }
+  return null;
+}
+
+function paymentErrorMessage(err: unknown): string {
+  const code = extractApiErrorCode(err);
+  if (code === 'idempotency_conflict') {
+    return 'This retry key was already used for a different payment. Close this dialog and start a fresh sandbox payment.';
+  }
+  if (code === 'transfer_pending') {
+    return 'A sandbox payment for this settlement is already recorded. Refresh the payment history before trying again.';
+  }
+  return extractApiError(err, 'Payment could not be started');
+}
+
 export function GroupDetailPage() {
   const params = useParams<{ id: string }>();
   const groupId = params.id ?? '';
@@ -482,7 +511,7 @@ export function GroupDetailPage() {
               );
               setRecordDebt(null);
             } catch (err: unknown) {
-              setRecordError(extractApiError(err, 'Payment could not be started'));
+              setRecordError(paymentErrorMessage(err));
             } finally {
               setRecordSaving(false);
             }
@@ -496,6 +525,7 @@ export function GroupDetailPage() {
             setRecordSaving(true);
             setRecordError(null);
             try {
+              const settlementRetryKey = crypto.randomUUID();
               const data = await settleDebt(groupId, {
                 fromUserId: recordDebt.fromUserId,
                 toUserId: recordDebt.toUserId,
@@ -503,7 +533,7 @@ export function GroupDetailPage() {
                 method: 'cash',
                 note: input.note || undefined,
                 paymentDate: input.paymentDate,
-              });
+              }, settlementRetryKey);
               setBalances(data.balances);
               setDebts(data.debts);
               await refreshGroupData();

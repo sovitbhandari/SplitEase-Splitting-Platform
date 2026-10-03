@@ -31,6 +31,7 @@ export type PaymentTransferRow = {
   failure_reason: string | null;
   note: string | null;
   idempotency_key: string;
+  request_hash: string | null;
   settlement_applied: boolean;
   created_at: Date;
   updated_at: Date;
@@ -72,6 +73,7 @@ export async function insertPaymentTransfer(input: {
   failureReason: string | null;
   note: string | null;
   idempotencyKey: string;
+  requestHash?: string | null;
 }): Promise<{ id: string }> {
   const { rows } = await query<{ id: string }>(
     `INSERT INTO payment_transfers (
@@ -79,10 +81,10 @@ export async function insertPaymentTransfer(input: {
        debtor_plaid_item_id, debtor_internal_account_id, debtor_plaid_account_id,
        receiver_plaid_item_id, receiver_plaid_account_id,
        amount_cents, currency, plaid_transfer_id, plaid_authorization_id,
-       status, failure_code, failure_reason, note, idempotency_key
+       status, failure_code, failure_reason, note, idempotency_key, request_hash
      )
      VALUES (
-       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20
      )
      RETURNING id`,
     [
@@ -105,6 +107,7 @@ export async function insertPaymentTransfer(input: {
       input.failureReason,
       input.note,
       input.idempotencyKey,
+      input.requestHash ?? null,
     ]
   );
   const row = rows[0];
@@ -154,7 +157,7 @@ export async function findPaymentTransferByPlaidTransferId(
        debtor_plaid_item_id, debtor_internal_account_id, debtor_plaid_account_id,
        receiver_plaid_item_id, receiver_plaid_account_id,
        amount_cents::text, currency, plaid_transfer_id, plaid_authorization_id,
-       status, failure_code, failure_reason, note, idempotency_key,
+       status, failure_code, failure_reason, note, idempotency_key, request_hash,
        settlement_applied, created_at, updated_at
      FROM payment_transfers
      WHERE plaid_transfer_id = $1`,
@@ -170,11 +173,32 @@ export async function findPaymentTransferById(id: string): Promise<PaymentTransf
        debtor_plaid_item_id, debtor_internal_account_id, debtor_plaid_account_id,
        receiver_plaid_item_id, receiver_plaid_account_id,
        amount_cents::text, currency, plaid_transfer_id, plaid_authorization_id,
-       status, failure_code, failure_reason, note, idempotency_key,
+       status, failure_code, failure_reason, note, idempotency_key, request_hash,
        settlement_applied, created_at, updated_at
      FROM payment_transfers
      WHERE id = $1`,
     [id]
+  );
+  return rows[0] ?? null;
+}
+
+export async function findPaymentTransferByIdempotency(input: {
+  initiatedByUserId: string;
+  groupId: string;
+  idempotencyKey: string;
+}): Promise<PaymentTransferRow | null> {
+  const { rows } = await query<PaymentTransferRow>(
+    `SELECT
+       id, group_id, settlement_key, debtor_user_id, receiver_user_id, initiated_by_user_id,
+       debtor_plaid_item_id, debtor_internal_account_id, debtor_plaid_account_id,
+       receiver_plaid_item_id, receiver_plaid_account_id,
+       amount_cents::text, currency, plaid_transfer_id, plaid_authorization_id,
+       status, failure_code, failure_reason, note, idempotency_key, request_hash,
+       settlement_applied, created_at, updated_at
+     FROM payment_transfers
+     WHERE initiated_by_user_id = $1 AND group_id = $2 AND idempotency_key = $3
+     ORDER BY created_at DESC LIMIT 1`,
+    [input.initiatedByUserId, input.groupId, input.idempotencyKey]
   );
   return rows[0] ?? null;
 }

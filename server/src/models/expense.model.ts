@@ -1,15 +1,24 @@
 import type { PoolClient } from 'pg';
 import { query, withTransaction } from '../utils/db';
 
+export class ExpenseHasSettlementsError extends Error {
+  constructor() {
+    super('Cannot delete an expense that has settlement history.');
+    this.name = 'ExpenseHasSettlementsError';
+  }
+}
+
 type SplitInsert = {
   userId: string;
   amountOwed: number;
+  amountOwedCents: number;
   ratio: number;
 };
 
 export async function createExpenseWithSplits(input: {
   groupId: string;
   amount: number;
+  amountCents: number;
   description: string;
   category: string;
   date: string;
@@ -18,7 +27,10 @@ export async function createExpenseWithSplits(input: {
 }): Promise<{ expenseId: string }> {
   return withTransaction(async (client: PoolClient) => {
     const members = await client.query<{ user_id: string }>(
-      `SELECT user_id FROM group_members WHERE group_id = $1`,
+      `SELECT user_id
+       FROM group_members
+       WHERE group_id = $1
+         AND removed_at IS NULL`,
       [input.groupId]
     );
     const memberIds = new Set(members.rows.map((item) => item.user_id));
@@ -32,13 +44,16 @@ export async function createExpenseWithSplits(input: {
     }
 
     const expenseRes = await client.query<{ id: string }>(
-      `INSERT INTO expenses (group_id, paid_by, amount, description, category, date)
-       VALUES ($1,$2,$3,$4,$5,$6)
+      `INSERT INTO expenses (
+        group_id, paid_by, amount, amount_cents, currency, description, category, date
+       )
+       VALUES ($1,$2,$3,$4,'USD',$5,$6,$7)
        RETURNING id`,
       [
         input.groupId,
         input.paidBy,
         input.amount,
+        input.amountCents,
         input.description,
         input.category,
         input.date,
@@ -51,9 +66,19 @@ export async function createExpenseWithSplits(input: {
 
     for (const split of input.splits) {
       await client.query(
-        `INSERT INTO expense_splits (expense_id, group_id, user_id, amount_owed, ratio)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [expenseId, input.groupId, split.userId, split.amountOwed, split.ratio]
+        `INSERT INTO expense_splits (
+          expense_id, group_id, user_id, amount_owed, original_amount_owed_cents,
+          amount_owed_cents, ratio
+         )
+         VALUES ($1,$2,$3,$4,$5,$5,$6)`,
+        [
+          expenseId,
+          input.groupId,
+          split.userId,
+          split.amountOwed,
+          split.amountOwedCents,
+          split.ratio,
+        ]
       );
     }
 
@@ -65,6 +90,8 @@ export async function createExpenseWithSplits(input: {
         expenseId,
         JSON.stringify({
           amount: input.amount,
+          amountCents: input.amountCents,
+          currency: 'USD',
           description: input.description,
           paidBy: input.paidBy,
           splitCount: input.splits.length,
@@ -121,13 +148,17 @@ export async function deleteExpenseById(
   groupId: string
 ): Promise<boolean> {
   return withTransaction(async (client: PoolClient) => {
-    await client.query(
-      `DELETE FROM settlements
-       WHERE expense_split_id IN (
-         SELECT id FROM expense_splits WHERE expense_id = $1 AND group_id = $2
-       )`,
+    const settlementCount = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM settlements s
+       INNER JOIN expense_splits es ON es.id = s.expense_split_id
+       WHERE es.expense_id = $1
+         AND es.group_id = $2`,
       [expenseId, groupId]
     );
+    if (Number(settlementCount.rows[0]?.count ?? 0) > 0) {
+      throw new ExpenseHasSettlementsError();
+    }
 
     const result = await client.query(
       `DELETE FROM expenses WHERE id = $1 AND group_id = $2`,

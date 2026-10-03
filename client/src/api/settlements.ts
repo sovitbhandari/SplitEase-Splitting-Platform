@@ -25,11 +25,13 @@ export async function settleDebt(
     method: 'cash' | 'pay';
     note?: string;
     paymentDate?: string;
-  }
+  },
+  idempotencyKey = crypto.randomUUID()
 ): Promise<{ balances: BalanceEntry[]; debts: DebtEntry[] }> {
   const { data } = await api.post<{ balances: BalanceEntry[]; debts: DebtEntry[] }>(
     `/api/groups/${groupId}/settlements`,
-    payload
+    payload,
+    { headers: { 'Idempotency-Key': idempotencyKey } }
   );
   return data;
 }

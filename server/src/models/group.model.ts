@@ -18,6 +18,7 @@ export type GroupMember = {
   avatar_url: string | null;
   role: 'admin' | 'member';
   joined_at: Date;
+  removed_at: Date | null;
 };
 
 export async function createGroup(input: {
@@ -47,7 +48,10 @@ export async function addMember(input: {
   await query(
     `INSERT INTO group_members (group_id, user_id, role)
      VALUES ($1, $2, $3)
-     ON CONFLICT (group_id, user_id) DO NOTHING`,
+     ON CONFLICT (group_id, user_id)
+     DO UPDATE SET
+       role = EXCLUDED.role,
+       removed_at = NULL`,
     [input.group_id, input.user_id, input.role]
   );
 }
@@ -65,8 +69,9 @@ export async function getGroupsForUser(userId: string): Promise<GroupSummary[]> 
        COUNT(gm2.user_id)::int AS member_count
      FROM group_members gm
      INNER JOIN groups g ON g.id = gm.group_id
-     INNER JOIN group_members gm2 ON gm2.group_id = g.id
+     INNER JOIN group_members gm2 ON gm2.group_id = g.id AND gm2.removed_at IS NULL
      WHERE gm.user_id = $1
+       AND gm.removed_at IS NULL
      GROUP BY g.id
      ORDER BY g.created_at DESC`,
     [userId]
@@ -90,8 +95,10 @@ export async function getGroupByIdForUser(
        COUNT(gm2.user_id)::int AS member_count
      FROM groups g
      INNER JOIN group_members gm ON gm.group_id = g.id
-     INNER JOIN group_members gm2 ON gm2.group_id = g.id
-     WHERE g.id = $1 AND gm.user_id = $2
+     INNER JOIN group_members gm2 ON gm2.group_id = g.id AND gm2.removed_at IS NULL
+     WHERE g.id = $1
+       AND gm.user_id = $2
+       AND gm.removed_at IS NULL
      GROUP BY g.id`,
     [groupId, userId]
   );
@@ -106,10 +113,12 @@ export async function getMembersByGroupId(groupId: string): Promise<GroupMember[
        u.display_name,
        u.avatar_url,
        gm.role,
-       gm.joined_at
+       gm.joined_at,
+       gm.removed_at
      FROM group_members gm
      INNER JOIN users u ON u.id = gm.user_id
      WHERE gm.group_id = $1
+       AND gm.removed_at IS NULL
      ORDER BY gm.joined_at ASC`,
     [groupId]
   );
@@ -131,7 +140,10 @@ export async function isGroupAdmin(groupId: string, userId: string): Promise<boo
   const { rows } = await query<{ is_admin: boolean }>(
     `SELECT EXISTS(
       SELECT 1 FROM group_members
-      WHERE group_id = $1 AND user_id = $2 AND role = 'admin'
+      WHERE group_id = $1
+        AND user_id = $2
+        AND role = 'admin'
+        AND removed_at IS NULL
     ) AS is_admin`,
     [groupId, userId]
   );
@@ -158,7 +170,11 @@ export async function updateGroup(
        g.invite_code,
        g.created_by,
        g.created_at,
-       (SELECT COUNT(*)::int FROM group_members gm WHERE gm.group_id = g.id) AS member_count`,
+       (
+        SELECT COUNT(*)::int
+        FROM group_members gm
+        WHERE gm.group_id = g.id AND gm.removed_at IS NULL
+       ) AS member_count`,
     [input.name, input.description, groupId]
   );
   return rows[0] ?? null;

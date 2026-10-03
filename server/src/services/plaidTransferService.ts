@@ -8,7 +8,6 @@ import {
 import { loadEnv } from '../config/env';
 import {
   getPlaidClient,
-  getPlaidBasePathForEnv,
   isPlaidTransferFeatureEnabled,
   shouldLabelAsSandboxTransfer,
 } from '../utils/plaidClient';
@@ -17,25 +16,20 @@ import { dollarsToCents, centsToDecimalString } from '../utils/money';
 import {
   findPaymentTransferById,
   findPaymentTransferByPlaidTransferId,
+  findPaymentTransferByIdempotency,
   insertPaymentTransfer,
   type PaymentTransferStatus,
+  type PaymentTransferRow,
   updatePaymentTransferById,
 } from '../models/paymentTransfer.model';
-import { settleDebtBetweenUsers } from '../models/settlement.model';
-import { query } from '../utils/db';
+import { query, withTransaction } from '../utils/db';
 import { computeGroupBalances } from '../utils/balanceEngine';
 import { emitBalanceUpdateToGroup, emitGroupDataUpdated } from '../sockets/balanceEmitter';
-
-function isSandboxEnv(): boolean {
-  const e = getPlaidBasePathForEnv();
-  return e === 'sandbox' || e === 'development';
-}
+import { lockSettlementPair, settleDebtBetweenUsersInTransaction } from '../models/settlement.model';
+import { hashCanonicalRequest } from '../models/idempotency.model';
 
 function shouldApplySettlementFromPlaidStatus(st: TransferStatus): boolean {
   if (st === TransferStatus.Settled || st === TransferStatus.FundsAvailable) {
-    return true;
-  }
-  if (isSandboxEnv() && st === TransferStatus.Posted) {
     return true;
   }
   return false;
@@ -61,6 +55,12 @@ function mapPlaidStatusToDb(st: TransferStatus): PaymentTransferStatus {
   }
 }
 
+function shouldAcceptStatus(current: PaymentTransferStatus, next: PaymentTransferStatus): boolean {
+  if (current === 'posted' || current === 'settled_manually') return next === 'posted';
+  if (current === 'failed' || current === 'cancelled' || current === 'returned') return current === next;
+  return true;
+}
+
 async function appendLedger(
   groupId: string,
   eventType: string,
@@ -75,40 +75,52 @@ async function appendLedger(
 }
 
 async function applySuccessfulTransfer(rowId: string): Promise<void> {
-  const row = await findPaymentTransferById(rowId);
-  if (!row || row.settlement_applied) {
-    return;
-  }
-  const amount = Number(row.amount_cents) / 100;
-  const sep = row.settlement_key.indexOf('_');
-  const fromUserId = row.settlement_key.slice(0, sep);
-  const toUserId = row.settlement_key.slice(sep + 1);
-
-  await settleDebtBetweenUsers({
-    groupId: row.group_id,
-    fromUserId,
-    toUserId,
-    amount,
-    method: 'plaid_transfer',
-    note: row.note ?? undefined,
-    paymentTransferId: row.id,
+  const groupId = await withTransaction(async (client) => {
+    const locked = await client.query<PaymentTransferRow>(
+      `SELECT id, group_id, settlement_key, debtor_user_id, receiver_user_id,
+              initiated_by_user_id, debtor_plaid_item_id, debtor_internal_account_id,
+              debtor_plaid_account_id, receiver_plaid_item_id, receiver_plaid_account_id,
+              amount_cents::text, currency, plaid_transfer_id, plaid_authorization_id,
+              status, failure_code, failure_reason, note, idempotency_key, request_hash,
+              settlement_applied, created_at, updated_at
+       FROM payment_transfers WHERE id = $1 FOR UPDATE`,
+      [rowId]
+    );
+    const row = locked.rows[0];
+    if (!row || row.settlement_applied) return row?.group_id ?? null;
+    const separator = row.settlement_key.indexOf('_');
+    if (separator <= 0) throw new Error('Invalid settlement key on payment transfer');
+    const fromUserId = row.settlement_key.slice(0, separator);
+    const toUserId = row.settlement_key.slice(separator + 1);
+    await lockSettlementPair(client, { groupId: row.group_id, fromUserId, toUserId });
+    await settleDebtBetweenUsersInTransaction(client, {
+      groupId: row.group_id,
+      fromUserId,
+      toUserId,
+      amount: Number(row.amount_cents) / 100,
+      method: 'plaid_transfer',
+      note: row.note ?? undefined,
+      paymentTransferId: row.id,
+    });
+    await client.query(
+      `UPDATE payment_transfers SET status = 'posted', settlement_applied = true, updated_at = now() WHERE id = $1`,
+      [row.id]
+    );
+    await client.query(
+      `INSERT INTO ledger_entries (group_id, event_type, entity_id, payload)
+       VALUES ($1, 'payment_posted', $2::uuid, $3::jsonb)`,
+      [row.group_id, row.id, JSON.stringify({ paymentTransferId: row.id, plaidTransferId: row.plaid_transfer_id, sandbox: shouldLabelAsSandboxTransfer() })]
+    );
+    await client.query(
+      `INSERT INTO balance_update_outbox (group_id, event_type, payload) VALUES ($1, 'payment_posted', $2::jsonb)`,
+      [row.group_id, JSON.stringify({ paymentTransferId: row.id })]
+    );
+    return row.group_id;
   });
-
-  await updatePaymentTransferById({
-    id: row.id,
-    status: 'posted',
-    settlementApplied: true,
-  });
-
-  await appendLedger(row.group_id, 'payment_posted', row.id, {
-    paymentTransferId: row.id,
-    plaidTransferId: row.plaid_transfer_id,
-    sandbox: shouldLabelAsSandboxTransfer(),
-  });
-
-  const balances = await computeGroupBalances(row.group_id);
-  await emitBalanceUpdateToGroup(row.group_id, balances);
-  await emitGroupDataUpdated(row.group_id);
+  if (!groupId) return;
+  const balances = await computeGroupBalances(groupId);
+  await emitBalanceUpdateToGroup(groupId, balances);
+  await emitGroupDataUpdated(groupId);
 }
 
 export async function syncPaymentTransferFromPlaidStatus(input: {
@@ -120,10 +132,9 @@ export async function syncPaymentTransferFromPlaidStatus(input: {
     return;
   }
   const dbStatus = mapPlaidStatusToDb(input.plaidStatus);
-  await updatePaymentTransferById({
-    id: row.id,
-    status: dbStatus,
-  });
+  if (shouldAcceptStatus(row.status, dbStatus)) {
+    await updatePaymentTransferById({ id: row.id, status: dbStatus });
+  }
 
   if (shouldApplySettlementFromPlaidStatus(input.plaidStatus) && !row.settlement_applied) {
     await applySuccessfulTransfer(row.id);
@@ -166,6 +177,26 @@ export type CreateSandboxTransferResult =
   | { ok: true; paymentTransferId: string; plaidTransferId: string }
   | { ok: false; code: string; message: string; paymentTransferId?: string };
 
+export function buildTransferRequestHash(input: {
+  groupId: string;
+  settlementKey: string;
+  debtorUserId: string;
+  receiverUserId: string;
+  internalAccountId: string;
+  amountCents: bigint | number | string;
+  note: string | null;
+}): string {
+  return hashCanonicalRequest({
+    groupId: input.groupId,
+    settlementKey: input.settlementKey,
+    debtorUserId: input.debtorUserId,
+    receiverUserId: input.receiverUserId,
+    internalAccountId: input.internalAccountId,
+    amountCents: input.amountCents.toString(),
+    note: input.note,
+  });
+}
+
 export async function createAuthorizedTransfer(input: {
   userId: string;
   groupId: string;
@@ -196,6 +227,29 @@ export async function createAuthorizedTransfer(input: {
   }
 
   const amountCents = dollarsToCents(input.amountDollars);
+  const requestHash = buildTransferRequestHash({
+    groupId: input.groupId,
+    settlementKey: input.settlementKey,
+    debtorUserId: input.debtorUserId,
+    receiverUserId: input.receiverUserId,
+    internalAccountId: input.internalAccountId,
+    amountCents: amountCents.toString(),
+    note: input.note,
+  });
+  const prior = await findPaymentTransferByIdempotency({
+    initiatedByUserId: input.userId,
+    groupId: input.groupId,
+    idempotencyKey: input.idempotencyKey,
+  });
+  if (prior) {
+    if (prior.request_hash !== requestHash) {
+      return { ok: false, code: 'idempotency_conflict', message: 'Idempotency-Key was already used with a different request payload.' };
+    }
+    if (!prior.plaid_transfer_id) {
+      return { ok: false, code: prior.status === 'failed' ? 'authorization_declined' : 'transfer_pending', message: prior.failure_reason ?? 'Transfer is already recorded.', paymentTransferId: prior.id };
+    }
+    return { ok: true, paymentTransferId: prior.id, plaidTransferId: prior.plaid_transfer_id };
+  }
   if (amountCents <= BigInt(0)) {
     return { ok: false, code: 'invalid_amount', message: 'Amount must be positive.' };
   }
@@ -265,6 +319,7 @@ export async function createAuthorizedTransfer(input: {
         failureReason: rationale?.description ?? 'Transfer authorization was declined.',
         note: input.note,
         idempotencyKey: input.idempotencyKey,
+        requestHash,
       });
       await appendLedger(input.groupId, 'payment_initiated', inserted.id, {
         outcome: 'authorization_declined',
@@ -311,6 +366,7 @@ export async function createAuthorizedTransfer(input: {
       failureReason: null,
       note: input.note,
       idempotencyKey: input.idempotencyKey,
+      requestHash,
     });
 
     await appendLedger(input.groupId, 'payment_initiated', inserted.id, {
@@ -326,6 +382,16 @@ export async function createAuthorizedTransfer(input: {
 
     return { ok: true, paymentTransferId: inserted.id, plaidTransferId: transfer.id };
   } catch (err: unknown) {
+    if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === '23505') {
+      const prior = await findPaymentTransferByIdempotency({
+        initiatedByUserId: input.userId,
+        groupId: input.groupId,
+        idempotencyKey: input.idempotencyKey,
+      });
+      if (prior?.request_hash === requestHash && prior.plaid_transfer_id) {
+        return { ok: true, paymentTransferId: prior.id, plaidTransferId: prior.plaid_transfer_id };
+      }
+    }
     const msg = err instanceof Error ? err.message : 'Transfer create failed';
     return { ok: false, code: 'plaid_error', message: msg };
   }

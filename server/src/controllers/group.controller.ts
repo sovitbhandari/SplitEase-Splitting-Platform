@@ -7,9 +7,12 @@ import {
   getGroupByIdForUser,
   getGroupsForUser,
   getMembersByGroupId,
-  isGroupAdmin,
   updateGroup,
 } from '../models/group.model';
+import {
+  requireCurrentGroupAdmin,
+  requireCurrentGroupMember,
+} from '../models/groupAccess.model';
 import {
   createGroupBodySchema,
   joinGroupBodySchema,
@@ -70,14 +73,14 @@ export async function updateGroupHandler(req: Request, res: Response): Promise<v
     res.status(400).json({ error: 'Validation failed', details: parsed.error.flatten() });
     return;
   }
+  const access = await requireCurrentGroupAdmin(groupId, userId);
+  if (!access.ok) {
+    res.status(access.status).json({ error: access.error });
+    return;
+  }
   const membership = await getGroupByIdForUser(groupId, userId);
   if (!membership) {
     res.status(404).json({ error: 'Group not found' });
-    return;
-  }
-  const admin = await isGroupAdmin(groupId, userId);
-  if (!admin) {
-    res.status(403).json({ error: 'Only admins can update trip settings' });
     return;
   }
   const nextDescription =
@@ -103,6 +106,11 @@ export async function getGroupByIdHandler(req: Request, res: Response): Promise<
   const groupId = req.params.id;
   if (!groupId) {
     res.status(400).json({ error: 'Group id is required' });
+    return;
+  }
+  const access = await requireCurrentGroupMember(groupId, userId);
+  if (!access.ok) {
+    res.status(access.status).json({ error: access.error });
     return;
   }
   const group = await getGroupByIdForUser(groupId, userId);
@@ -149,14 +157,9 @@ export async function deleteGroupHandler(req: Request, res: Response): Promise<v
     res.status(400).json({ error: 'Group id is required' });
     return;
   }
-  const membership = await getGroupByIdForUser(groupId, userId);
-  if (!membership) {
-    res.status(404).json({ error: 'Group not found' });
-    return;
-  }
-  const admin = await isGroupAdmin(groupId, userId);
-  if (!admin) {
-    res.status(403).json({ error: 'Forbidden' });
+  const access = await requireCurrentGroupAdmin(groupId, userId);
+  if (!access.ok) {
+    res.status(access.status).json({ error: access.error });
     return;
   }
   await deleteGroup(groupId);

@@ -1,0 +1,154 @@
+{
+  "date": "2026-10-03T02:35:31.030Z",
+  "commit": "584a891de5c7dcaab46c5ec44a714abdb18b02cf",
+  "code_changes": "M client/src/api/expenses.ts\n M client/src/api/settlements.ts\n M client/src/components/AddExpenseModal.tsx\n M client/src/components/RecordPaymentModal.tsx\n M client/src/pages/GroupDetailPage.tsx\n M package.json\n M server/src/controllers/expense.controller.ts\n M server/src/controllers/group.controller.ts\n M server/src/controllers/paymentTransfer.controller.ts\n M server/src/controllers/plaidWebhook.controller.ts\n M server/src/controllers/settlement.controller.ts\n M server/src/models/expense.model.ts\n M server/src/models/group.model.ts\n M server/src/models/paymentTransfer.model.ts\n M server/src/models/settlement.model.ts\n M server/src/schemas/expense.schema.ts\n M server/src/services/plaidTransferService.ts\n M server/src/sockets/balanceEmitter.ts\n M server/src/sockets/groupHandlers.ts\n M server/src/utils/balanceEngine.ts\n M server/src/utils/debtEngine.ts\n M server/src/utils/money.ts\n M server/src/utils/splitCalculator.ts\n?? benchmarks/\n?? db/migrations/013_soft_removed_group_members.sql\n?? db/migrations/014_money_minor_units.sql\n?? db/migrations/015_settlement_idempotency_and_webhook_events.sql\n?? docs/\n?? server/src/__tests__/endToEndBehavior.test.ts\n?? server/src/__tests__/expenseDeletion.test.ts\n?? server/src/__tests__/expenseMoney.test.ts\n?? server/src/__tests__/groupAuthorization.test.ts\n?? server/src/__tests__/settlementConcurrency.test.ts\n?? server/src/__tests__/splitCalculator.test.ts\n?? server/src/models/groupAccess.model.ts\n?? server/src/models/idempotency.model.ts\n?? server/src/models/providerWebhook.model.ts\n?? server/src/utils/canonicalJson.ts",
+  "versions": {
+    "node": "v22.16.0",
+    "npm": "10.9.2",
+    "postgres_client": "psql (PostgreSQL) 17.9 (Homebrew)",
+    "docker": "Docker version 28.1.1, build 4eba377327"
+  },
+  "os_cpu_ram": {
+    "platform": "darwin",
+    "release": "25.6.0",
+    "arch": "arm64",
+    "cpus": [
+      "Apple M5 Pro"
+    ],
+    "total_ram_bytes": 25769803776
+  },
+  "docker_resource_limits": null,
+  "app_and_generator_placement": "Supertest closed-loop client and Express app in one Node process; PostgreSQL external via DATABASE_URL.",
+  "schema_indexes": [
+    "accounts.accounts_pkey: CREATE UNIQUE INDEX accounts_pkey ON public.accounts USING btree (id)",
+    "accounts.accounts_plaid_account_id_key: CREATE UNIQUE INDEX accounts_plaid_account_id_key ON public.accounts USING btree (plaid_account_id)",
+    "accounts.idx_accounts_item_id: CREATE INDEX idx_accounts_item_id ON public.accounts USING btree (plaid_item_id)",
+    "accounts.idx_accounts_user_id: CREATE INDEX idx_accounts_user_id ON public.accounts USING btree (user_id)",
+    "balance_update_outbox.balance_update_outbox_pkey: CREATE UNIQUE INDEX balance_update_outbox_pkey ON public.balance_update_outbox USING btree (id)",
+    "balance_update_outbox.idx_balance_update_outbox_pending: CREATE INDEX idx_balance_update_outbox_pending ON public.balance_update_outbox USING btree (created_at) WHERE (delivered_at IS NULL)",
+    "email_verifications.email_verifications_pkey: CREATE UNIQUE INDEX email_verifications_pkey ON public.email_verifications USING btree (id)",
+    "email_verifications.idx_email_verifications_token_hash: CREATE UNIQUE INDEX idx_email_verifications_token_hash ON public.email_verifications USING btree (token_hash)",
+    "email_verifications.idx_email_verifications_user_id: CREATE INDEX idx_email_verifications_user_id ON public.email_verifications USING btree (user_id)",
+    "expense_splits.expense_splits_expense_id_user_id_key: CREATE UNIQUE INDEX expense_splits_expense_id_user_id_key ON public.expense_splits USING btree (expense_id, user_id)",
+    "expense_splits.expense_splits_pkey: CREATE UNIQUE INDEX expense_splits_pkey ON public.expense_splits USING btree (id)",
+    "expense_splits.idx_expense_splits_expense_id: CREATE INDEX idx_expense_splits_expense_id ON public.expense_splits USING btree (expense_id)",
+    "expense_splits.idx_expense_splits_group_amount_owed_cents: CREATE INDEX idx_expense_splits_group_amount_owed_cents ON public.expense_splits USING btree (group_id, is_settled, amount_owed_cents)",
+    "expense_splits.idx_expense_splits_group_id: CREATE INDEX idx_expense_splits_group_id ON public.expense_splits USING btree (group_id)",
+    "expense_splits.idx_expense_splits_group_settled: CREATE INDEX idx_expense_splits_group_settled ON public.expense_splits USING btree (group_id, is_settled)",
+    "expense_splits.idx_expense_splits_user_settled: CREATE INDEX idx_expense_splits_user_settled ON public.expense_splits USING btree (user_id, is_settled)",
+    "expenses.expenses_pkey: CREATE UNIQUE INDEX expenses_pkey ON public.expenses USING btree (id)",
+    "expenses.idx_expenses_group_date: CREATE INDEX idx_expenses_group_date ON public.expenses USING btree (group_id, date DESC)",
+    "expenses.idx_expenses_paid_by: CREATE INDEX idx_expenses_paid_by ON public.expenses USING btree (paid_by)",
+    "group_members.group_members_pkey: CREATE UNIQUE INDEX group_members_pkey ON public.group_members USING btree (group_id, user_id)",
+    "group_members.idx_group_members_group_active: CREATE INDEX idx_group_members_group_active ON public.group_members USING btree (group_id, user_id) WHERE (removed_at IS NULL)",
+    "group_members.idx_group_members_group_id: CREATE INDEX idx_group_members_group_id ON public.group_members USING btree (group_id)",
+    "group_members.idx_group_members_user_id_gin: CREATE INDEX idx_group_members_user_id_gin ON public.group_members USING gin (user_id)",
+    "groups.groups_invite_code_key: CREATE UNIQUE INDEX groups_invite_code_key ON public.groups USING btree (invite_code)",
+    "groups.groups_pkey: CREATE UNIQUE INDEX groups_pkey ON public.groups USING btree (id)",
+    "groups.idx_groups_created_by: CREATE INDEX idx_groups_created_by ON public.groups USING btree (created_by)",
+    "groups.idx_groups_invite_code: CREATE INDEX idx_groups_invite_code ON public.groups USING btree (invite_code)",
+    "idempotency_records.idempotency_records_actor_user_id_group_id_operation_idempo_key: CREATE UNIQUE INDEX idempotency_records_actor_user_id_group_id_operation_idempo_key ON public.idempotency_records USING btree (actor_user_id, group_id, operation, idempotency_key)",
+    "idempotency_records.idempotency_records_pkey: CREATE UNIQUE INDEX idempotency_records_pkey ON public.idempotency_records USING btree (id)",
+    "idempotency_records.idx_idempotency_records_expires_at: CREATE INDEX idx_idempotency_records_expires_at ON public.idempotency_records USING btree (expires_at)",
+    "ledger_entries.idx_ledger_group_created_at: CREATE INDEX idx_ledger_group_created_at ON public.ledger_entries USING btree (group_id, created_at DESC)",
+    "ledger_entries.ledger_entries_pkey: CREATE UNIQUE INDEX ledger_entries_pkey ON public.ledger_entries USING btree (id)",
+    "money_migration_anomalies.money_migration_anomalies_pkey: CREATE UNIQUE INDEX money_migration_anomalies_pkey ON public.money_migration_anomalies USING btree (id)",
+    "payment_transfers.idx_payment_transfers_group_created: CREATE INDEX idx_payment_transfers_group_created ON public.payment_transfers USING btree (group_id, created_at DESC)",
+    "payment_transfers.idx_payment_transfers_group_settlement: CREATE INDEX idx_payment_transfers_group_settlement ON public.payment_transfers USING btree (group_id, settlement_key)",
+    "payment_transfers.idx_payment_transfers_plaid_transfer_id: CREATE INDEX idx_payment_transfers_plaid_transfer_id ON public.payment_transfers USING btree (plaid_transfer_id) WHERE (plaid_transfer_id IS NOT NULL)",
+    "payment_transfers.payment_transfers_idempotency_key_key: CREATE UNIQUE INDEX payment_transfers_idempotency_key_key ON public.payment_transfers USING btree (idempotency_key)",
+    "payment_transfers.payment_transfers_idempotency_lookup: CREATE INDEX payment_transfers_idempotency_lookup ON public.payment_transfers USING btree (initiated_by_user_id, group_id, idempotency_key)",
+    "payment_transfers.payment_transfers_pkey: CREATE UNIQUE INDEX payment_transfers_pkey ON public.payment_transfers USING btree (id)",
+    "plaid_items.idx_plaid_items_user_id: CREATE INDEX idx_plaid_items_user_id ON public.plaid_items USING btree (user_id)",
+    "plaid_items.plaid_items_item_id_key: CREATE UNIQUE INDEX plaid_items_item_id_key ON public.plaid_items USING btree (item_id)",
+    "plaid_items.plaid_items_pkey: CREATE UNIQUE INDEX plaid_items_pkey ON public.plaid_items USING btree (id)",
+    "provider_webhook_events.provider_webhook_events_pkey: CREATE UNIQUE INDEX provider_webhook_events_pkey ON public.provider_webhook_events USING btree (id)",
+    "provider_webhook_events.provider_webhook_events_provider_event_key_key: CREATE UNIQUE INDEX provider_webhook_events_provider_event_key_key ON public.provider_webhook_events USING btree (provider, event_key)",
+    "refresh_tokens.idx_refresh_tokens_expires_at: CREATE INDEX idx_refresh_tokens_expires_at ON public.refresh_tokens USING btree (expires_at)",
+    "refresh_tokens.idx_refresh_tokens_user_id: CREATE INDEX idx_refresh_tokens_user_id ON public.refresh_tokens USING btree (user_id)",
+    "refresh_tokens.refresh_tokens_pkey: CREATE UNIQUE INDEX refresh_tokens_pkey ON public.refresh_tokens USING btree (jti)",
+    "schema_migrations.schema_migrations_pkey: CREATE UNIQUE INDEX schema_migrations_pkey ON public.schema_migrations USING btree (version)",
+    "settlements.idx_settlements_split_id: CREATE INDEX idx_settlements_split_id ON public.settlements USING btree (expense_split_id)",
+    "settlements.settlements_pkey: CREATE UNIQUE INDEX settlements_pkey ON public.settlements USING btree (id)",
+    "users.idx_users_email: CREATE INDEX idx_users_email ON public.users USING btree (email)",
+    "users.users_email_key: CREATE UNIQUE INDEX users_email_key ON public.users USING btree (email)",
+    "users.users_pkey: CREATE UNIQUE INDEX users_pkey ON public.users USING btree (id)"
+  ],
+  "dataset": {
+    "synthetic": true,
+    "expense_levels": [
+      100,
+      1000,
+      5000
+    ],
+    "participants": 10
+  },
+  "workload": {
+    "reads_per_level": 30,
+    "endpoint": "GET /api/groups/:groupId/expenses"
+  },
+  "commands": [
+    "SPLITEASE_BENCH_ALLOW_DESTRUCTIVE=1 DATABASE_URL=<bench-db> npm run bench:splitease:balances"
+  ],
+  "durations": [
+    {
+      "expense_count": 100,
+      "participant_count": 10,
+      "endpoint_latency": {
+        "count": 30,
+        "min_ms": 6.348707999999988,
+        "p50_ms": 6.677124999999705,
+        "p95_ms": 8.184124999999767,
+        "p99_ms": 8.184665999999652,
+        "max_ms": 8.184665999999652
+      },
+      "statuses": {
+        "200": 30
+      }
+    },
+    {
+      "expense_count": 1000,
+      "participant_count": 10,
+      "endpoint_latency": {
+        "count": 30,
+        "min_ms": 62.86012500000288,
+        "p50_ms": 64.50466699999743,
+        "p95_ms": 67.03862500000105,
+        "p99_ms": 67.32049999999435,
+        "max_ms": 67.32049999999435
+      },
+      "statuses": {
+        "200": 30
+      }
+    },
+    {
+      "expense_count": 5000,
+      "participant_count": 10,
+      "endpoint_latency": {
+        "count": 30,
+        "min_ms": 24.911458999995375,
+        "p50_ms": 26.634625000006054,
+        "p95_ms": 28.433208000002196,
+        "p99_ms": 28.494542000000365,
+        "max_ms": 28.494542000000365
+      },
+      "statuses": {
+        "200": 30
+      }
+    }
+  ],
+  "seed": "balance-api-v1",
+  "repetitions": 1,
+  "exclusions": [
+    "No browser rendering measured.",
+    "Closed-loop endpoint reads are not an RPS capacity guarantee."
+  ],
+  "raw_artifact_paths": [
+    "docs/benchmarks/runs/2026-10-03T02-33-42-402Z-splitease-balance-api/raw/balance-api-latencies.jsonl",
+    "docs/benchmarks/runs/2026-10-03T02-33-42-402Z-splitease-balance-api/raw/balance-query-plans.json"
+  ],
+  "errors": [],
+  "status": "MEASURED",
+  "exploratory_or_final": "exploratory",
+  "aggregate_calculation": "Percentiles are per expense level over repeated authenticated endpoint reads after seeding."
+}

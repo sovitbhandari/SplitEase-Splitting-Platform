@@ -1,17 +1,22 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { computeGroupDebts } from '../utils/debtEngine';
-import { getGroupByIdForUser } from '../models/group.model';
 import {
   hasPendingLikeTransfer,
+  findPaymentTransferByIdempotency,
   listPaymentTransfersForGroup,
 } from '../models/paymentTransfer.model';
 import { getAccountsByUser } from '../models/plaid.model';
 import {
+  requireCurrentGroupMember,
+  requireHistoricalGroupParticipant,
+} from '../models/groupAccess.model';
+import {
+  buildTransferRequestHash,
   createAuthorizedTransfer,
 } from '../services/plaidTransferService';
 import { parseSettlementKey } from '../utils/settlementKey';
-import { dollarsToCents } from '../utils/money';
+import { dollarsToCents, parseUsdCents } from '../utils/money';
 import { isPlaidTransferFeatureEnabled, shouldLabelAsSandboxTransfer } from '../utils/plaidClient';
 
 function requireUser(req: Request, res: Response): string | null {
@@ -33,9 +38,9 @@ export async function getPaymentMethodsHandler(req: Request, res: Response): Pro
     res.status(400).json({ error: 'Group id is required' });
     return;
   }
-  const membership = await getGroupByIdForUser(groupId, userId);
-  if (!membership) {
-    res.status(404).json({ error: 'Group not found' });
+  const access = await requireCurrentGroupMember(groupId, userId);
+  if (!access.ok) {
+    res.status(access.status).json({ error: access.error });
     return;
   }
 
@@ -58,7 +63,7 @@ export async function getPaymentMethodsHandler(req: Request, res: Response): Pro
 
 const previewSchema = z.object({
   fromPlaidAccountId: z.string().uuid(),
-  amount: z.number().positive(),
+  amount: z.union([z.number().finite().positive(), z.string().min(1)]),
 });
 
 export async function previewTransferHandler(req: Request, res: Response): Promise<void> {
@@ -84,9 +89,9 @@ export async function previewTransferHandler(req: Request, res: Response): Promi
     return;
   }
 
-  const membership = await getGroupByIdForUser(groupId, userId);
-  if (!membership) {
-    res.status(404).json({ error: 'Group not found' });
+  const access = await requireCurrentGroupMember(groupId, userId);
+  if (!access.ok) {
+    res.status(access.status).json({ error: access.error });
     return;
   }
 
@@ -94,11 +99,24 @@ export async function previewTransferHandler(req: Request, res: Response): Promi
     res.status(403).json({ error: 'Only the person who owes money can start this payment.' });
     return;
   }
+  const receiverAccess = await requireHistoricalGroupParticipant(groupId, pair.toUserId);
+  if (!receiverAccess.ok) {
+    res.status(receiverAccess.status).json({ error: receiverAccess.error });
+    return;
+  }
+
+  let reqCents: number;
+  try {
+    reqCents = parseUsdCents(parsedBody.data.amount, 'amount');
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid amount' });
+    return;
+  }
 
   if (!isPlaidTransferFeatureEnabled()) {
     res.status(200).json({
       canTransfer: false,
-      amount: parsedBody.data.amount,
+      amount: reqCents / 100,
       currency: 'USD',
       debtorName: '',
       receiverName: '',
@@ -118,11 +136,10 @@ export async function previewTransferHandler(req: Request, res: Response): Promi
   }
 
   const owedCents = dollarsToCents(line.amount);
-  const reqCents = dollarsToCents(parsedBody.data.amount);
-  if (reqCents > owedCents) {
+  if (BigInt(reqCents) > owedCents) {
     res.status(200).json({
       canTransfer: false,
-      amount: parsedBody.data.amount,
+      amount: reqCents / 100,
       currency: 'USD',
       debtorName: line.fromUserName,
       receiverName: line.toUserName,
@@ -136,7 +153,7 @@ export async function previewTransferHandler(req: Request, res: Response): Promi
   if (pending) {
     res.status(200).json({
       canTransfer: false,
-      amount: parsedBody.data.amount,
+      amount: reqCents / 100,
       currency: 'USD',
       debtorName: line.fromUserName,
       receiverName: line.toUserName,
@@ -151,7 +168,7 @@ export async function previewTransferHandler(req: Request, res: Response): Promi
   if (!match) {
     res.status(200).json({
       canTransfer: false,
-      amount: parsedBody.data.amount,
+      amount: reqCents / 100,
       currency: 'USD',
       debtorName: line.fromUserName,
       receiverName: line.toUserName,
@@ -163,7 +180,7 @@ export async function previewTransferHandler(req: Request, res: Response): Promi
 
   res.status(200).json({
     canTransfer: true,
-    amount: parsedBody.data.amount,
+    amount: reqCents / 100,
     currency: 'USD',
     debtorName: line.fromUserName,
     receiverName: line.toUserName,
@@ -178,7 +195,7 @@ export async function previewTransferHandler(req: Request, res: Response): Promi
 
 const createSchema = z.object({
   fromPlaidAccountId: z.string().uuid(),
-  amount: z.number().positive(),
+  amount: z.union([z.number().finite().positive(), z.string().min(1)]),
   note: z.string().max(500).optional(),
 });
 
@@ -205,14 +222,19 @@ export async function createTransferHandler(req: Request, res: Response): Promis
     return;
   }
 
-  const membership = await getGroupByIdForUser(groupId, userId);
-  if (!membership) {
-    res.status(404).json({ error: 'Group not found' });
+  const access = await requireCurrentGroupMember(groupId, userId);
+  if (!access.ok) {
+    res.status(access.status).json({ error: access.error });
     return;
   }
 
   if (userId !== pair.fromUserId) {
     res.status(403).json({ error: 'Only the person who owes money can start this payment.' });
+    return;
+  }
+  const receiverAccess = await requireHistoricalGroupParticipant(groupId, pair.toUserId);
+  if (!receiverAccess.ok) {
+    res.status(receiverAccess.status).json({ error: receiverAccess.error });
     return;
   }
 
@@ -230,9 +252,15 @@ export async function createTransferHandler(req: Request, res: Response): Promis
     return;
   }
 
+  let reqCents: number;
+  try {
+    reqCents = parseUsdCents(parsedBody.data.amount, 'amount');
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid amount' });
+    return;
+  }
   const owedCents = dollarsToCents(line.amount);
-  const reqCents = dollarsToCents(parsedBody.data.amount);
-  if (reqCents > owedCents) {
+  if (BigInt(reqCents) > owedCents) {
     res.status(400).json({ error: 'Amount cannot exceed the current settlement amount.' });
     return;
   }
@@ -244,8 +272,39 @@ export async function createTransferHandler(req: Request, res: Response): Promis
   }
 
   const idem =
-    (typeof req.headers['idempotency-key'] === 'string' && req.headers['idempotency-key'].trim()) ||
-    `splitease-${userId}-${settlementId}-${Date.now()}`;
+    typeof req.headers['idempotency-key'] === 'string'
+      ? req.headers['idempotency-key'].trim()
+      : '';
+  if (!idem) {
+    res.status(428).json({ error: 'Idempotency-Key header is required for transfer retries.' });
+    return;
+  }
+  const requestHash = buildTransferRequestHash({
+    groupId,
+    settlementKey: settlementId,
+    debtorUserId: pair.fromUserId,
+    receiverUserId: pair.toUserId,
+    internalAccountId: parsedBody.data.fromPlaidAccountId,
+    amountCents: reqCents,
+    note: parsedBody.data.note ?? null,
+  });
+  const prior = await findPaymentTransferByIdempotency({
+    initiatedByUserId: userId,
+    groupId,
+    idempotencyKey: idem,
+  });
+  if (prior) {
+    if (prior.request_hash !== requestHash) {
+      res.status(409).json({ error: 'Idempotency-Key was already used with a different request payload.' });
+      return;
+    }
+    res.status(201).json({
+      id: prior.id,
+      plaidTransferId: prior.plaid_transfer_id,
+      sandbox: shouldLabelAsSandboxTransfer(),
+    });
+    return;
+  }
 
   let result;
   try {
@@ -256,7 +315,7 @@ export async function createTransferHandler(req: Request, res: Response): Promis
       debtorUserId: pair.fromUserId,
       receiverUserId: pair.toUserId,
       internalAccountId: parsedBody.data.fromPlaidAccountId,
-      amountDollars: parsedBody.data.amount,
+      amountDollars: reqCents / 100,
       note: parsedBody.data.note ?? null,
       idempotencyKey: idem,
     });
@@ -275,7 +334,10 @@ export async function createTransferHandler(req: Request, res: Response): Promis
 
   if (!result.ok) {
     const status =
-      result.code === 'authorization_declined' || result.code === 'no_account' ? 400 : 502;
+      result.code === 'authorization_declined' || result.code === 'no_account' ? 400
+        : result.code === 'idempotency_conflict' ? 409
+          : result.code === 'transfer_pending' ? 409
+            : 502;
     res.status(status).json({ error: result.message, code: result.code, paymentTransferId: result.paymentTransferId });
     return;
   }
@@ -297,9 +359,9 @@ export async function listGroupTransfersHandler(req: Request, res: Response): Pr
     res.status(400).json({ error: 'Group id is required' });
     return;
   }
-  const membership = await getGroupByIdForUser(groupId, userId);
-  if (!membership) {
-    res.status(404).json({ error: 'Group not found' });
+  const access = await requireCurrentGroupMember(groupId, userId);
+  if (!access.ok) {
+    res.status(access.status).json({ error: access.error });
     return;
   }
 

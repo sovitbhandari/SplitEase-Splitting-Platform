@@ -30,13 +30,13 @@ export async function getGroupExpenses(groupId: string): Promise<{
 export async function createExpense(
   groupId: string,
   payload: {
-    amount: number;
+    amount: string;
     description: string;
     category: string;
     date: string;
     paidBy: string;
     splitMode: 'equal' | 'percentage' | 'exact';
-    splits: Array<{ userId: string; value: number }>;
+    splits: Array<{ userId: string; value: string | number }>;
   }
 ): Promise<{ expenseId: string; balances: BalanceEntry[] }> {
   const { data } = await api.post<{ expenseId: string; balances: BalanceEntry[] }>(

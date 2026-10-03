@@ -208,7 +208,7 @@ export function RecordPaymentModal({
               <span id={modeGroupId} className="sr-only">
                 Choose payment method
               </span>
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-sm">
                 <input
                   type="radio"
                   name="pay-mode"
@@ -223,7 +223,7 @@ export function RecordPaymentModal({
                 />
                 Manual payment
               </label>
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-sm">
                 <input
                   type="radio"
                   name="pay-mode"
@@ -377,7 +377,14 @@ export function RecordPaymentModal({
             </p>
           ) : null}
 
-          {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+          {error ? (
+            <p
+              className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+              role="alert"
+            >
+              {error}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 px-5 py-3">
           <button

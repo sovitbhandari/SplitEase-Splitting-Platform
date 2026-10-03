@@ -11,13 +11,13 @@ type Props = {
   loading?: boolean;
   onClose: () => void;
   onSubmit: (payload: {
-    amount: number;
+    amount: string;
     description: string;
     category: string;
     date: string;
     paidBy: string;
     splitMode: Mode;
-    splits: Array<{ userId: string; value: number }>;
+    splits: Array<{ userId: string; value: string | number }>;
   }) => Promise<void>;
 };
 
@@ -33,20 +33,32 @@ export function AddExpenseModal({ members, paidBy, loading, onClose, onSubmit }:
   );
   const [error, setError] = useState<string | null>(null);
 
-  const numericAmount = Number(amount || 0);
+  const parseUsd = (value: string): number | null =>
+    /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value.trim()) ? Number(value) : null;
+  const parsePercent = (value: string): number | null =>
+    /^(?:0|[1-9]\d*)(?:\.\d{1,4})?$/.test(value.trim()) ? Number(value) : null;
+  const numericAmount = parseUsd(amount) ?? Number.NaN;
   const splitSum = useMemo(
     () =>
-      members.reduce((sum, member) => sum + Number(values[member.user_id] || 0), 0),
-    [members, values]
+      members.reduce((sum, member) => {
+        const raw = values[member.user_id] || '0';
+        const parsed = splitMode === 'percentage' ? parsePercent(raw) : parseUsd(raw);
+        return sum + (parsed ?? Number.NaN);
+      }, 0),
+    [members, splitMode, values]
   );
 
   const helperText =
-    splitMode === 'percentage'
+    parseUsd(amount) === null
+      ? 'Amount must be USD with at most 2 decimal places'
+      : splitMode !== 'equal' && !Number.isFinite(splitSum)
+        ? 'Split values use unsupported precision'
+        : splitMode === 'percentage'
       ? Math.abs(splitSum - 100) > 0.001
         ? 'Splits must add up to 100%'
         : undefined
       : splitMode === 'exact'
-        ? Math.abs(splitSum - numericAmount) > 0.01
+        ? Math.abs(splitSum - numericAmount) > 0.001
           ? 'Exact splits must add up to total amount'
           : undefined
         : undefined;
@@ -54,7 +66,7 @@ export function AddExpenseModal({ members, paidBy, loading, onClose, onSubmit }:
   const submit = async (): Promise<void> => {
     setError(null);
     const payload = {
-      amount: numericAmount,
+      amount: amount.trim(),
       description,
       category,
       date,
@@ -65,10 +77,10 @@ export function AddExpenseModal({ members, paidBy, loading, onClose, onSubmit }:
         value:
           splitMode === 'equal'
             ? 1
-            : Number(values[member.user_id] || 0),
+            : (values[member.user_id] || '0').trim(),
       })),
     };
-    if (payload.amount <= 0 || payload.description.trim() === '') {
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0 || payload.description.trim() === '') {
       setError('Amount and description are required');
       return;
     }
@@ -108,6 +120,8 @@ export function AddExpenseModal({ members, paidBy, loading, onClose, onSubmit }:
             className="rounded border border-slate-300 px-3 py-2 text-sm"
             placeholder="Amount"
             type="number"
+            step="0.01"
+            min="0.01"
             value={amount}
             onChange={(event) => setAmount(event.target.value)}
           />
@@ -158,6 +172,8 @@ export function AddExpenseModal({ members, paidBy, loading, onClose, onSubmit }:
                 <input
                   className="w-32 rounded border border-slate-300 px-2 py-1 text-sm"
                   type="number"
+                  step={splitMode === 'percentage' ? '0.0001' : '0.01'}
+                  min="0"
                   value={values[member.user_id] ?? '0'}
                   onChange={(event) =>
                     setValues((prev) => ({ ...prev, [member.user_id]: event.target.value }))

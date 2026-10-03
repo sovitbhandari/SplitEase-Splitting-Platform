@@ -1,0 +1,53 @@
+{
+  "date": "2026-10-03T02:24:19.307Z",
+  "commit": "584a891de5c7dcaab46c5ec44a714abdb18b02cf",
+  "code_changes": "M client/src/api/expenses.ts\n M client/src/api/settlements.ts\n M client/src/components/AddExpenseModal.tsx\n M client/src/components/RecordPaymentModal.tsx\n M client/src/pages/GroupDetailPage.tsx\n M package.json\n M server/src/controllers/expense.controller.ts\n M server/src/controllers/group.controller.ts\n M server/src/controllers/paymentTransfer.controller.ts\n M server/src/controllers/plaidWebhook.controller.ts\n M server/src/controllers/settlement.controller.ts\n M server/src/models/expense.model.ts\n M server/src/models/group.model.ts\n M server/src/models/paymentTransfer.model.ts\n M server/src/models/settlement.model.ts\n M server/src/schemas/expense.schema.ts\n M server/src/services/plaidTransferService.ts\n M server/src/sockets/balanceEmitter.ts\n M server/src/sockets/groupHandlers.ts\n M server/src/utils/balanceEngine.ts\n M server/src/utils/debtEngine.ts\n M server/src/utils/money.ts\n M server/src/utils/splitCalculator.ts\n?? benchmarks/\n?? db/migrations/013_soft_removed_group_members.sql\n?? db/migrations/014_money_minor_units.sql\n?? db/migrations/015_settlement_idempotency_and_webhook_events.sql\n?? docs/\n?? server/src/__tests__/endToEndBehavior.test.ts\n?? server/src/__tests__/expenseDeletion.test.ts\n?? server/src/__tests__/expenseMoney.test.ts\n?? server/src/__tests__/groupAuthorization.test.ts\n?? server/src/__tests__/settlementConcurrency.test.ts\n?? server/src/__tests__/splitCalculator.test.ts\n?? server/src/models/groupAccess.model.ts\n?? server/src/models/idempotency.model.ts\n?? server/src/models/providerWebhook.model.ts\n?? server/src/utils/canonicalJson.ts",
+  "versions": {
+    "node": "v22.16.0",
+    "npm": "10.9.2",
+    "postgres_client": "psql (PostgreSQL) 17.9 (Homebrew)",
+    "docker": "Docker version 28.1.1, build 4eba377327"
+  },
+  "os_cpu_ram": {
+    "platform": "darwin",
+    "release": "25.6.0",
+    "arch": "arm64",
+    "cpus": [
+      "Apple M5 Pro"
+    ],
+    "total_ram_bytes": 25769803776
+  },
+  "docker_resource_limits": null,
+  "app_and_generator_placement": "Node benchmark client in the local workspace; no server process required.",
+  "schema_indexes": [],
+  "dataset": {
+    "synthetic": true,
+    "deterministic_cases": 10000,
+    "property_cases": 2000
+  },
+  "workload": "SplitEase allocation correctness harness; not financial transactions.",
+  "commands": [
+    "npm run bench:splitease:allocation"
+  ],
+  "durations": {
+    "count": 12000,
+    "min_ms": 0.0003329999999834854,
+    "p50_ms": 0.002625000000023192,
+    "p95_ms": 0.005667000000016742,
+    "p99_ms": 0.009040999999996302,
+    "max_ms": 4.225042000000002
+  },
+  "seed": 1592598566,
+  "repetitions": 1,
+  "exclusions": [
+    "No database/API latency measured by this allocation-only harness."
+  ],
+  "raw_artifact_paths": [
+    "docs/benchmarks/runs/2026-10-03T02-24-19-237Z-splitease-allocation/raw/allocation-results.jsonl",
+    "docs/benchmarks/runs/2026-10-03T02-24-19-237Z-splitease-allocation/allocation-summary.json"
+  ],
+  "errors": [],
+  "status": "MEASURED",
+  "exploratory_or_final": "exploratory",
+  "aggregate_calculation": "Percentiles are computed over per-case in-process calculation elapsed milliseconds."
+}

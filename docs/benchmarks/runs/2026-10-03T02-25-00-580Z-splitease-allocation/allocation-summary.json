@@ -1,0 +1,21 @@
+{
+  "run_id": "2026-10-03T02-25-00-580Z-splitease-allocation",
+  "status": "MEASURED",
+  "seed": 1592598566,
+  "deterministic_cases": 10000,
+  "property_cases": 2000,
+  "valid_cases": 10285,
+  "invalid_cases": 1715,
+  "passed_cases": 12000,
+  "failed_cases": 0,
+  "latency": {
+    "count": 12000,
+    "min_ms": 0.00033299999999769625,
+    "p50_ms": 0.0027499999999918145,
+    "p95_ms": 0.005791999999999575,
+    "p99_ms": 0.008834000000007336,
+    "max_ms": 4.234250000000003
+  },
+  "raw_path": "docs/benchmarks/runs/2026-10-03T02-25-00-580Z-splitease-allocation/raw/allocation-results.jsonl",
+  "errors": []
+}

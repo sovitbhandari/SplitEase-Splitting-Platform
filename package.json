@@ -6,7 +6,10 @@
     "dev": "concurrently -n client,server -c blue,green \"npm run dev -w client\" \"npm run dev -w server\"",
     "db:migrate": "tsx db/migrate.ts",
     "lint": "eslint server/src --max-warnings 0",
-    "format": "prettier --write \"**/*.{ts,tsx,js,cjs,json,css,md}\""
+    "format": "prettier --write \"**/*.{ts,tsx,js,cjs,json,css,md}\"",
+    "bench:splitease:allocation": "tsx benchmarks/splitease/allocation-cases.ts",
+    "bench:splitease:concurrency": "tsx benchmarks/splitease/concurrency-schedules.ts",
+    "bench:splitease:balances": "tsx benchmarks/splitease/balance-api.ts"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.46.0",

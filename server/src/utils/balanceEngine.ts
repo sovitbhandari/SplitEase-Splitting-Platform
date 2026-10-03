@@ -1,3 +1,4 @@
+import type { PoolClient, QueryResultRow } from 'pg';
 import { query } from './db';
 
 export type BalanceEntry = {
@@ -6,9 +7,22 @@ export type BalanceEntry = {
   direction: 'owes' | 'owed' | 'settled';
 };
 
-export async function computeGroupBalances(groupId: string): Promise<BalanceEntry[]> {
-  const { rows: receivableRows } = await query<{ user_id: string; amount_receivable: string }>(
-    `SELECT e.paid_by AS user_id, SUM(es.amount_owed)::text AS amount_receivable
+async function computeGroupBalancesWithRunner(
+  groupId: string,
+  runner: Pick<PoolClient, 'query'> | typeof query
+): Promise<BalanceEntry[]> {
+  async function run<R extends QueryResultRow>(
+    text: string,
+    params: unknown[]
+  ): Promise<{ rows: R[] }> {
+    if (typeof runner === 'function') {
+      return runner<R>(text, params);
+    }
+    const result = await runner.query<R>(text, params);
+    return { rows: result.rows };
+  }
+  const { rows: receivableRows } = await run<{ user_id: string; amount_receivable: string }>(
+    `SELECT e.paid_by AS user_id, SUM(es.amount_owed_cents)::text AS amount_receivable
      FROM expense_splits es
      INNER JOIN expenses e ON e.id = es.expense_id
      WHERE es.group_id = $1
@@ -17,8 +31,8 @@ export async function computeGroupBalances(groupId: string): Promise<BalanceEntr
     [groupId]
   );
 
-  const { rows: owedRows } = await query<{ user_id: string; amount_owed: string }>(
-    `SELECT user_id, SUM(amount_owed)::text AS amount_owed
+  const { rows: owedRows } = await run<{ user_id: string; amount_owed: string }>(
+    `SELECT user_id, SUM(amount_owed_cents)::text AS amount_owed
      FROM expense_splits
      WHERE group_id = $1 AND is_settled = false
      GROUP BY user_id`,
@@ -36,7 +50,8 @@ export async function computeGroupBalances(groupId: string): Promise<BalanceEntr
   }
 
   return Array.from(map.entries()).map(([userId, totals]) => {
-    const net = Math.round((totals.receivable - totals.owed) * 100) / 100;
+    const netCents = totals.receivable - totals.owed;
+    const net = netCents / 100;
     if (net > 0) {
       return { userId, amount: net, direction: 'owed' };
     }
@@ -45,4 +60,15 @@ export async function computeGroupBalances(groupId: string): Promise<BalanceEntr
     }
     return { userId, amount: 0, direction: 'settled' };
   });
+}
+
+export async function computeGroupBalances(groupId: string): Promise<BalanceEntry[]> {
+  return computeGroupBalancesWithRunner(groupId, query);
+}
+
+export async function computeGroupBalancesInTransaction(
+  client: PoolClient,
+  groupId: string
+): Promise<BalanceEntry[]> {
+  return computeGroupBalancesWithRunner(groupId, client);
 }

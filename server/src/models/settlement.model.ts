@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import { withTransaction } from '../utils/db';
+import { centsToDollars, parseUsdCents } from '../utils/money';
 
 export async function settleDebtBetweenUsers(input: {
   groupId: string;
@@ -12,56 +13,98 @@ export async function settleDebtBetweenUsers(input: {
   paymentTransferId?: string;
 }): Promise<{ settledAmount: number }> {
   return withTransaction(async (client: PoolClient) => {
+    return settleDebtBetweenUsersInTransaction(client, input);
+  });
+}
+
+export async function lockSettlementPair(
+  client: PoolClient,
+  input: { groupId: string; fromUserId: string; toUserId: string }
+): Promise<void> {
+  const ordered = [input.fromUserId, input.toUserId].sort();
+  await client.query(
+    `SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))`,
+    [input.groupId, `${ordered[0]}:${ordered[1]}`]
+  );
+}
+
+export async function settleDebtBetweenUsersInTransaction(
+  client: PoolClient,
+  input: {
+    groupId: string;
+    fromUserId: string;
+    toUserId: string;
+    amount: number;
+    method: 'cash' | 'pay' | 'plaid_transfer';
+    note?: string;
+    paymentDate?: string;
+    paymentTransferId?: string;
+  }
+): Promise<{ settledAmount: number }> {
     const splits = await client.query<{
       id: string;
-      amount_owed: string;
+      amount_owed_cents: string;
     }>(
-      `SELECT es.id, es.amount_owed::text
+      `SELECT es.id, es.amount_owed_cents::text
        FROM expense_splits es
        INNER JOIN expenses e ON e.id = es.expense_id
        WHERE es.group_id = $1
          AND es.user_id = $2
          AND e.paid_by = $3
          AND es.is_settled = false
-       ORDER BY es.created_at ASC`,
+       ORDER BY es.created_at ASC
+       FOR UPDATE OF es`,
       [input.groupId, input.fromUserId, input.toUserId]
     );
 
-    let remaining = Math.round(input.amount * 100) / 100;
-    const selected: Array<{ splitId: string; amount: number; originalAmount: number }> = [];
+    let remaining = parseUsdCents(input.amount, 'settlement amount');
+    const originalRequestedCents = remaining;
+    const selected: Array<{ splitId: string; amountCents: number; originalAmountCents: number }> = [];
 
     for (const split of splits.rows) {
-      const splitAmount = Math.round(Number(split.amount_owed) * 100) / 100;
+      const splitAmount = Number(split.amount_owed_cents);
       if (remaining <= 0) {
         break;
       }
       const applyAmount = Math.min(splitAmount, remaining);
       if (applyAmount > 0) {
-        selected.push({ splitId: split.id, amount: applyAmount, originalAmount: splitAmount });
-        remaining = Math.round((remaining - applyAmount) * 100) / 100;
+        selected.push({
+          splitId: split.id,
+          amountCents: applyAmount,
+          originalAmountCents: splitAmount,
+        });
+        remaining -= applyAmount;
       }
     }
 
     if (selected.length === 0) {
       throw new Error('No unsettled debt found for this pair');
     }
-    if (Math.abs(remaining) > 0.009) {
+    if (remaining !== 0) {
       throw new Error('Settlement amount exceeds available unsettled debt');
     }
 
     for (const item of selected) {
-      const newAmount = Math.round((item.originalAmount - item.amount) * 100) / 100;
-      const settled = newAmount <= 0.009;
+      const newAmountCents = item.originalAmountCents - item.amountCents;
+      const settled = newAmountCents === 0;
       await client.query(
         `UPDATE expense_splits
-         SET amount_owed = $2, is_settled = $3
+         SET amount_owed = $2, amount_owed_cents = $3, is_settled = $4
          WHERE id = $1`,
-        [item.splitId, settled ? 0 : newAmount, settled]
+        [item.splitId, centsToDollars(newAmountCents), newAmountCents, settled]
       );
       await client.query(
-        `INSERT INTO settlements (from_user_id, to_user_id, expense_split_id, amount)
-         VALUES ($1, $2, $3, $4)`,
-        [input.fromUserId, input.toUserId, item.splitId, item.amount]
+        `INSERT INTO settlements (
+          from_user_id, to_user_id, expense_split_id, amount, amount_cents
+        )
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          input.fromUserId,
+          input.toUserId,
+          item.splitId,
+          centsToDollars(item.amountCents),
+          item.amountCents,
+        ]
       );
     }
 
@@ -73,7 +116,8 @@ export async function settleDebtBetweenUsers(input: {
         JSON.stringify({
           fromUserId: input.fromUserId,
           toUserId: input.toUserId,
-          amount: input.amount,
+          amount: centsToDollars(originalRequestedCents),
+          amountCents: originalRequestedCents,
           method: input.method,
           note: input.note ?? undefined,
           paymentDate: input.paymentDate ?? undefined,
@@ -82,6 +126,5 @@ export async function settleDebtBetweenUsers(input: {
       ]
     );
 
-    return { settledAmount: input.amount };
-  });
+    return { settledAmount: centsToDollars(originalRequestedCents) };
 }

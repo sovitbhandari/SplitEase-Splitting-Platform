@@ -1,0 +1,9 @@
+{
+  "date": "2026-10-03T02:33:24.198Z",
+  "commit": "584a891de5c7dcaab46c5ec44a714abdb18b02cf",
+  "code_changes": "M client/src/api/expenses.ts\n M client/src/api/settlements.ts\n M client/src/components/AddExpenseModal.tsx\n M client/src/components/RecordPaymentModal.tsx\n M client/src/pages/GroupDetailPage.tsx\n M package.json\n M server/src/controllers/expense.controller.ts\n M server/src/controllers/group.controller.ts\n M server/src/controllers/paymentTransfer.controller.ts\n M server/src/controllers/plaidWebhook.controller.ts\n M server/src/controllers/settlement.controller.ts\n M server/src/models/expense.model.ts\n M server/src/models/group.model.ts\n M server/src/models/paymentTransfer.model.ts\n M server/src/models/settlement.model.ts\n M server/src/schemas/expense.schema.ts\n M server/src/services/plaidTransferService.ts\n M server/src/sockets/balanceEmitter.ts\n M server/src/sockets/groupHandlers.ts\n M server/src/utils/balanceEngine.ts\n M server/src/utils/debtEngine.ts\n M server/src/utils/money.ts\n M server/src/utils/splitCalculator.ts\n?? benchmarks/\n?? db/migrations/013_soft_removed_group_members.sql\n?? db/migrations/014_money_minor_units.sql\n?? db/migrations/015_settlement_idempotency_and_webhook_events.sql\n?? docs/\n?? server/src/__tests__/endToEndBehavior.test.ts\n?? server/src/__tests__/expenseDeletion.test.ts\n?? server/src/__tests__/expenseMoney.test.ts\n?? server/src/__tests__/groupAuthorization.test.ts\n?? server/src/__tests__/settlementConcurrency.test.ts\n?? server/src/__tests__/splitCalculator.test.ts\n?? server/src/models/groupAccess.model.ts\n?? server/src/models/idempotency.model.ts\n?? server/src/models/providerWebhook.model.ts\n?? server/src/utils/canonicalJson.ts",
+  "errors": [
+    "expected 404 \"Not Found\", got 401 \"Unauthorized\""
+  ],
+  "status": "BLOCKED"
+}
