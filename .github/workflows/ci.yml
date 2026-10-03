@@ -47,7 +47,8 @@ jobs:
         run: npm ci
 
       - name: Install Linux Rollup binding
-        run: npm install --workspace client --no-save --no-audit --no-fund @rollup/rollup-linux-x64-gnu
+        working-directory: client
+        run: npm install --no-save --package-lock=false --no-audit --no-fund @rollup/rollup-linux-x64-gnu
 
       - name: Apply migrations
         run: npm run db:migrate
